@@ -1,0 +1,2712 @@
+<!doctype html><html><head><style>@import "tailwindcss";
+:root {
+  --ink: #172033;
+  --muted: #667085;
+  --line: #d9dee8;
+  --blue: #2874f0;
+  --yellow: #ffe500;
+  --paper: #fff;
+  --wash: #f4f6fa;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--wash);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+button,
+input {
+  font: inherit;
+}
+main {
+  min-height: 100vh;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  gap: 28px;
+  align-items: center;
+  padding: 28px 36px;
+  background: #172033;
+  color: #fff;
+  border-bottom: 5px solid var(--yellow);
+}
+header h1 {
+  margin: 4px 0 6px;
+  font-size: 30px;
+  letter-spacing: -0.6px;
+}
+header p {
+  margin: 0;
+  color: #cbd2df;
+  max-width: 700px;
+  font-size: 14px;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  color: var(--yellow);
+}
+.uploadButton,
+.printButton {
+  border: 0;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 800;
+  padding: 13px 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.uploadButton input {
+  display: none;
+}
+.notice {
+  margin: 14px 36px 0;
+  background: #eaf2ff;
+  border: 1px solid #b8cff5;
+  padding: 11px 14px;
+  display: flex;
+  justify-content: space-between;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.notice button {
+  border: 0;
+  background: transparent;
+  font-size: 18px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin: 18px 36px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.stats div {
+  background: #fff;
+  padding: 15px 18px;
+}
+.stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.stats strong {
+  font-size: 24px;
+  display: block;
+  margin-top: 4px;
+}
+.stats .ready {
+  color: #168348;
+  font-size: 18px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  margin: 0 36px 36px;
+  min-height: 620px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+aside {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.search {
+  display: flex;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  gap: 7px;
+}
+.search input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #bbc3d0;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 12px;
+}
+.search button {
+  border: 0;
+  border-radius: 4px;
+  background: #172033;
+  color: #fff;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.resultHeading {
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  background: #f7f8fa;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.resultHeading small {
+  color: var(--muted);
+}
+.results {
+  overflow: auto;
+}
+.results > button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  background: #fff;
+  padding: 13px 14px;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+}
+.results > button:hover,
+.results > button.active {
+  background: #eef4ff;
+  box-shadow: inset 4px 0 var(--blue);
+}
+.results strong {
+  font-size: 13px;
+}
+.results small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.tag {
+  display: inline-block;
+  width: max-content;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: #e7eefc;
+  color: #215bb4;
+}
+.tag.fbf {
+  background: #fff4c2;
+  color: #725d00;
+}
+article {
+  min-width: 0;
+}
+.detailHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.detailHead h2 {
+  font-size: 21px;
+  margin: 7px 0 3px;
+}
+.detailHead p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.detailGrid {
+  display: grid;
+  grid-template-columns: minmax(270px, 1fr) minmax(340px, 1.15fr);
+}
+.record {
+  padding: 20px 22px;
+  border-right: 1px solid var(--line);
+  max-height: 555px;
+  overflow: auto;
+}
+.record h3,
+.preview h3 {
+  font-size: 13px;
+  margin: 0 0 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.record > div {
+  display: grid;
+  grid-template-columns: 42% 58%;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf0f4;
+  font-size: 11px;
+}
+.record span {
+  color: var(--muted);
+}
+.record strong {
+  overflow-wrap: anywhere;
+}
+.preview {
+  padding: 20px 22px;
+  background: #f8f9fb;
+}
+.previewHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+}
+.previewHead span {
+  font-size: 10px;
+  color: #168348;
+  font-weight: 700;
+}
+.label {
+  margin: 16px auto 0;
+  background: #fff;
+  color: #000;
+  border: 1px solid #000;
+  font-family: Arial, Helvetica, sans-serif;
+  box-shadow: 0 8px 24px #1c29451a;
+  overflow: hidden;
+}
+.alphaLabel {
+  width: 320px;
+}
+.fbfLabel {
+  width: 350px;
+}
+.labelTitle,
+.barcodeTitle {
+  text-align: center;
+  font-weight: 800;
+  border-bottom: 1px solid #000;
+  padding: 4px;
+  font-size: 12px;
+}
+.labelRow {
+  display: grid;
+  grid-template-columns: 36% 64%;
+  border-bottom: 1px solid #000;
+  font-size: 8px;
+  line-height: 1.15;
+}
+.fbfLabel .labelRow {
+  grid-template-columns: 40% 60%;
+  text-align: left;
+}
+.labelRow strong,
+.labelRow span {
+  padding: 3px 4px;
+  overflow-wrap: anywhere;
+}
+.labelRow strong {
+  border-right: 1px solid #000;
+}
+.complaints {
+  min-height: 47px;
+}
+.company {
+  min-height: 68px;
+  align-items: center;
+}
+.barcodeBox {
+  height: 105px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 4px 7px;
+}
+.fbfLabel .barcodeBox {
+  height: 94px;
+}
+.barcodeBox svg {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: visible;
+}
+.barcodeNumber {
+  flex: 0 0 auto;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.size-3x3 .barcodeNumber {
+  font-size: 10px;
+}
+
+/* Close every packaging table directly beneath its final data row. */
+.alphaPack > div:last-child {
+  border-bottom: 1px solid #000;
+}
+.fbfPack .packItem:last-child > span {
+  border-bottom: 1px solid #000;
+}
+
+.actionDropdown .specificChoice {
+  margin-top: 5px;
+  padding-top: 12px;
+  color: #5b4bd4;
+  border-top: 1px solid #ece9f3;
+}
+.selectionOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(13, 11, 24, 0.6);
+  backdrop-filter: blur(9px);
+  animation: noticeIn 0.18s ease both;
+}
+.selectionModal {
+  width: min(480px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 90px rgba(8, 6, 20, 0.35);
+  animation: cardIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.selectionModalHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.selectionModalHead h2 {
+  margin: 10px 0 4px;
+  color: #201d32;
+  font-size: 22px;
+  letter-spacing: -0.6px;
+}
+.selectionModalHead p {
+  margin: 0;
+  color: #8f8c9e;
+  font-size: 11px;
+}
+.modalClose {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  color: #777386;
+  border: 1px solid #e8e5ee;
+  border-radius: 10px;
+  background: #f8f7fa;
+  font-size: 21px;
+  cursor: pointer;
+}
+.selectionField {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
+  color: #4a4659;
+  font-size: 11px;
+  font-weight: 750;
+}
+.selectionField input {
+  width: 100%;
+  padding: 14px;
+  color: #262236;
+  border: 1px solid #ddd9e8;
+  border-radius: 11px;
+  outline: none;
+  background: #fbfaff;
+  font-size: 14px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.selectionField input:focus {
+  border-color: #8b7df3;
+  box-shadow: 0 0 0 4px rgba(117, 103, 255, 0.1);
+}
+.selectionHint {
+  margin: 8px 0 0;
+  color: #9692a4;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.selectionActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 22px;
+}
+@media (max-width: 480px) {
+  .selectionModal {
+    padding: 18px;
+    border-radius: 15px;
+  }
+  .selectionActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+}
+@media print {
+  .selectionOverlay {
+    display: none !important;
+  }
+}
+
+/* Large, high-clarity application typography. Physical labels are excluded. */
+@media screen {
+  header p {
+    font-size: 16px;
+  }
+  .eyebrow {
+    font-size: 12px;
+  }
+  .systemStatus {
+    font-size: 12px;
+  }
+  .uploadButton > span:not(.uploadIcon) {
+    font-size: 14px;
+  }
+  .uploadButton small {
+    font-size: 11px;
+  }
+  .notice {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .tabs button {
+    min-width: 265px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .tabs strong {
+    font-size: 15px;
+  }
+  .tabs button > span:not(.tabIcon) {
+    font-size: 12px;
+  }
+  .marketplaceSubmenu > span {
+    font-size: 11px;
+  }
+  .marketplaceSubmenu button {
+    min-width: 118px;
+    padding: 10px 11px;
+    font-size: 13px;
+  }
+  .marketplaceSubmenu button small {
+    min-width: 23px;
+    height: 23px;
+    font-size: 11px;
+  }
+  .stats span {
+    font-size: 11px;
+  }
+  .stats strong {
+    font-size: 32px;
+  }
+  .stats .ready {
+    font-size: 13px;
+  }
+  .search input,
+  .packagingSearchBar input {
+    padding: 13px;
+    font-size: 15px;
+  }
+  .search button,
+  .packagingSearchBar button {
+    padding-left: 15px;
+    padding-right: 15px;
+    font-size: 14px;
+  }
+  .resultHeading {
+    padding-top: 14px;
+    padding-bottom: 14px;
+    font-size: 12px;
+  }
+  .resultHeading small {
+    font-size: 11px;
+  }
+  .results > button {
+    gap: 7px;
+    padding-top: 19px;
+    padding-bottom: 19px;
+  }
+  .results strong {
+    font-size: 16px;
+  }
+  .results small {
+    font-size: 13px;
+  }
+  .results .tag,
+  .detailHead .tag {
+    font-size: 10px;
+  }
+  .detailHead {
+    min-height: 112px;
+  }
+  .detailHead h2 {
+    font-size: 29px;
+  }
+  .detailHead p {
+    font-size: 13px;
+  }
+  .printButton,
+  .secondaryAction {
+    min-height: 47px;
+    padding: 13px 18px;
+    font-size: 13px;
+  }
+  .actionDropdown {
+    min-width: 235px;
+  }
+  .actionDropdown button {
+    padding: 13px 11px;
+    font-size: 13px;
+  }
+  .record h3,
+  .preview > .previewHead h3 {
+    font-size: 13px;
+  }
+  .record > div {
+    padding: 14px 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .record span,
+  .record strong {
+    font-size: 14px;
+  }
+  .previewHead > span {
+    font-size: 12px;
+  }
+  .labelNavigator strong,
+  .labelNavigator button {
+    font-size: 12px;
+  }
+  .sizeToolbar {
+    width: min(590px, calc(100% - 48px));
+    padding: 12px 13px 12px 16px;
+  }
+  .sizeToolbar strong {
+    font-size: 13px;
+  }
+  .sizeToolbar small {
+    font-size: 11px;
+  }
+  .sizeToolbar select {
+    min-width: 235px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    font-size: 13px;
+  }
+  .selectionModalHead h2 {
+    font-size: 25px;
+  }
+  .selectionModalHead p,
+  .selectionField {
+    font-size: 13px;
+  }
+  .selectionHint {
+    font-size: 12px;
+  }
+}
+@media screen and (min-width: 1150px) {
+  .workspace {
+    grid-template-columns: 400px minmax(0, 1fr);
+  }
+  .detailGrid {
+    grid-template-columns: minmax(360px, 0.96fr) minmax(480px, 1.14fr);
+  }
+}
+
+/* Reserve a guaranteed printed line for the continuous EAN number. */
+.barcodeBox svg {
+  flex: 1 1 0;
+  width: auto;
+  height: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+}
+.barcodeNumber {
+  display: block;
+  width: 100%;
+  height: 14px;
+  min-height: 14px;
+  padding: 1px 0 0;
+  overflow: visible;
+  text-align: center;
+  line-height: 12px;
+}
+@media print {
+  .barcodeBox {
+    overflow: visible !important;
+  }
+  .barcodeNumber {
+    display: block !important;
+    visibility: visible !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Give the bars and the complete EAN their own fixed areas in previews and PDFs. */
+.barcodeBox {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  padding: 4px 7px 18px !important;
+  overflow: hidden;
+}
+
+.barcodeBox svg {
+  display: block;
+  flex: 1 1 auto;
+  width: auto;
+  height: 100%;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.barcodeBox svg text {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+.barcodeNumber {
+  position: absolute !important;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  z-index: 2;
+  display: block !important;
+  width: 100%;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  overflow: visible;
+  color: #000 !important;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  visibility: visible !important;
+}
+
+.size-3x3 .barcodeNumber {
+  font-size: 10px;
+  line-height: 14px;
+}
+
+@media print {
+  .barcodeBox {
+    overflow: hidden !important;
+  }
+
+  .barcodeBox svg text {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .barcodeNumber {
+    display: block !important;
+    visibility: visible !important;
+  }
+}
+.empty {
+  padding: 80px;
+  text-align: center;
+  color: var(--muted);
+}
+@media (max-width: 900px) {
+  header,
+  .detailHead {
+    align-items: flex-start;
+  }
+  .stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  aside {
+    border-right: 0;
+    max-height: 360px;
+  }
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+  .record {
+    border-right: 0;
+  }
+  .preview {
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 560px) {
+  header {
+    padding: 22px;
+    flex-direction: column;
+  }
+  .uploadButton {
+    width: 100%;
+    text-align: center;
+  }
+  .stats,
+  .workspace {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+  .detailGrid {
+    display: block;
+  }
+  .preview {
+    overflow: auto;
+  }
+}
+@media print {
+  body {
+    background: #fff;
+  }
+  header,
+  .stats,
+  aside,
+  .detailHead,
+  .record,
+  .notice,
+  .previewHead {
+    display: none !important;
+  }
+  .workspace,
+  .detailGrid,
+  article,
+  .preview {
+    display: block !important;
+    margin: 0;
+    border: 0;
+    background: #fff;
+    padding: 0;
+  }
+  .label {
+    box-shadow: none;
+    margin: 0 auto;
+    break-inside: avoid;
+  }
+  .alphaLabel {
+    width: 2in;
+  }
+  .fbfLabel {
+    width: 2in;
+  }
+  @page {
+    margin: 4mm;
+  }
+}
+
+/* Structured row geometry prevents text from touching or crossing borders. */
+.size-3x4 .label,
+.size-3x3 .label {
+  display: flex;
+  flex-direction: column;
+}
+.size-3x4 .labelTitle,
+.size-3x3 .labelTitle,
+.size-3x4 .barcodeTitle,
+.size-3x3 .barcodeTitle,
+.size-3x4 .labelRow,
+.size-3x3 .labelRow {
+  flex: 0 0 auto;
+}
+.size-3x4 .labelTitle {
+  height: 25px;
+  display: grid;
+  place-items: center;
+}
+.size-3x4 .labelRow {
+  height: 14px;
+  min-height: 14px;
+  font-size: 9.2px;
+  line-height: 1;
+}
+.size-3x4 .addressRow {
+  height: 50px;
+  min-height: 50px;
+  font-size: 7.8px;
+  line-height: 1.12;
+}
+.size-3x4 .manufacturedRow {
+  height: 16px;
+  min-height: 16px;
+}
+.size-3x4 .complaints {
+  height: 50px;
+  min-height: 50px;
+  font-size: 8.5px;
+  line-height: 1.12;
+}
+.size-3x4 .company {
+  height: 55px;
+  min-height: 55px;
+}
+.size-3x4 .barcodeTitle {
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+.size-3x4 .label > .barcodeBox {
+  flex: 1 1 auto;
+  min-height: 48px;
+  height: auto;
+}
+.size-3x3 .labelTitle {
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+.size-3x3 .labelRow {
+  height: 11px;
+  min-height: 11px;
+  font-size: 7.4px;
+  line-height: 1;
+}
+.size-3x3 .addressRow {
+  height: 35px;
+  min-height: 35px;
+  font-size: 6.2px;
+  line-height: 1.08;
+}
+.size-3x3 .manufacturedRow {
+  height: 12px;
+  min-height: 12px;
+}
+.size-3x3 .complaints {
+  height: 38px;
+  min-height: 38px;
+  font-size: 6.8px;
+}
+.size-3x3 .company {
+  height: 42px;
+  min-height: 42px;
+}
+.size-3x3 .barcodeTitle {
+  height: 16px;
+  display: grid;
+  place-items: center;
+}
+.size-3x3 .label > .barcodeBox {
+  flex: 1 1 auto;
+  min-height: 38px;
+  height: auto;
+}
+.size-3x4 .labelRow strong,
+.size-3x4 .labelRow span,
+.size-3x3 .labelRow strong,
+.size-3x3 .labelRow span {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.size-3x4 .labelRow strong,
+.size-3x3 .labelRow strong {
+  font-weight: 800;
+}
+.size-3x4 .labelRow span,
+.size-3x3 .labelRow span {
+  color: #000;
+  font-weight: 500;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 18px 36px 0;
+}
+.tabs button {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 12px 18px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 220px;
+}
+.tabs button.active {
+  border-color: var(--blue);
+  box-shadow: inset 0 -3px var(--blue);
+  background: #f2f6ff;
+}
+.tabs strong,
+.tabs span {
+  display: block;
+}
+.tabs strong {
+  font-size: 13px;
+}
+.tabs span {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.packagingDetail {
+  grid-template-columns: minmax(250px, 0.75fr) minmax(360px, 1.25fr);
+}
+.packLabel {
+  width: 430px;
+  margin: 16px auto 0;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  box-shadow: 0 8px 24px #1c29451a;
+  overflow: hidden;
+}
+.alphaPack > div {
+  display: grid;
+  grid-template-columns: 33% 67%;
+  min-height: 42px;
+  border-bottom: 1px solid #000;
+  align-items: center;
+  text-align: center;
+}
+.alphaPack > div:last-child {
+  border-bottom: 0;
+}
+.alphaPack strong {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #000;
+  font-size: 13px;
+}
+.alphaPack span {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px;
+  overflow-wrap: anywhere;
+}
+.fbfPack .consignment,
+.fbfPack .slip {
+  text-align: center;
+  font-weight: 800;
+  padding: 5px;
+  border-bottom: 1px solid #000;
+}
+.fbfPack .packHead {
+  display: grid;
+  grid-template-columns: 14% 36% 36% 14%;
+  text-align: center;
+}
+.fbfPack .packItemsGroup {
+  display: grid;
+  grid-template-columns: 14% 86%;
+  text-align: center;
+}
+.fbfPack .mergedBoxNo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 2px;
+  border-top: 1px solid #000;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  font-size: 11px;
+}
+.fbfPack .packItem {
+  display: grid;
+  grid-template-columns: 41.86% 41.86% 16.28%;
+  text-align: center;
+}
+.fbfPack .packHead > * {
+  padding: 6px 2px;
+  border-right: 1px solid #000;
+  font-size: 11px;
+}
+.fbfPack .packItem > span {
+  padding: 8px 3px;
+  border-right: 1px solid #000;
+  border-top: 1px solid #000;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-wrap: anywhere;
+}
+.fbfPack .packHead > *:last-child,
+.fbfPack .packItem > span:last-child {
+  border-right: 0;
+}
+.printRun {
+  display: none;
+}
+.productPrintRun {
+  display: none;
+}
+.actionMenus {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.actionMenu {
+  position: relative;
+}
+.secondaryAction {
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--blue);
+  font-weight: 800;
+  padding: 12px 18px;
+  cursor: pointer;
+}
+.actionDropdown {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 10px 28px #17203326;
+}
+.actionDropdown button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  background: #fff;
+  padding: 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.actionDropdown button:hover {
+  background: #eef4ff;
+}
+.pdfSource {
+  position: fixed;
+  top: 0;
+  left: -12000px;
+  z-index: -1;
+  background: #fff;
+}
+.productPdfSource {
+  position: fixed;
+  top: 0;
+  left: -12000px;
+  z-index: -1;
+  background: #fff;
+}
+.productPdfPage {
+  width: max-content;
+  padding: 0;
+  background: #fff;
+}
+.productPdfPage .label {
+  margin: 0;
+  box-shadow: none;
+}
+.pdfPage {
+  width: max-content;
+  padding: 0;
+  background: #fff;
+}
+.pdfPage .packLabel {
+  margin: 0;
+  box-shadow: none;
+}
+@media (max-width: 560px) {
+  .tabs {
+    margin-left: 14px;
+    margin-right: 14px;
+    overflow: auto;
+  }
+  .tabs button {
+    min-width: 180px;
+  }
+  .packLabel {
+    width: 100%;
+  }
+}
+@media print {
+  header,
+  .tabs,
+  .packagingSearchBar,
+  .stats,
+  aside,
+  .detailHead,
+  .record,
+  .notice,
+  .previewHead {
+    display: none !important;
+  }
+  .pdfSource {
+    display: none !important;
+  }
+  .productPdfSource {
+    display: none !important;
+  }
+  .workspace,
+  .detailGrid,
+  article,
+  .preview {
+    display: block !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  .label,
+  .packLabel {
+    box-shadow: none;
+    margin: 0 auto;
+    break-inside: avoid;
+  }
+  .printRun {
+    display: block !important;
+  }
+  .productPrintRun {
+    display: block !important;
+  }
+  .printRun ~ * {
+    display: none !important;
+  }
+  .printRun .packLabel {
+    display: block;
+  }
+  .printPage {
+    break-after: page;
+    page-break-after: always;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .productPrintPage {
+    break-after: page;
+    page-break-after: always;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .productPrintPage .label {
+    display: block;
+  }
+  .packagingDetail:has(+ .printRun) {
+    display: none !important;
+  }
+  .detailGrid:has(+ .productPrintRun) {
+    display: none !important;
+  }
+  @page {
+    margin: 4mm;
+  }
+}
+.labelNavigator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.labelNavigator button {
+  border: 1px solid #b8c1cf;
+  background: #fff;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.labelNavigator button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.labelNavigator strong {
+  font-size: 10px;
+  color: #168348;
+  white-space: nowrap;
+}
+.packagingSearchBar {
+  display: flex;
+  gap: 8px;
+  margin: 14px 36px 0;
+  max-width: 720px;
+}
+.packagingSearchBar input {
+  flex: 1;
+  border: 1px solid #bbc3d0;
+  border-radius: 5px;
+  padding: 11px 12px;
+  background: #fff;
+}
+.packagingSearchBar button {
+  border: 0;
+  border-radius: 5px;
+  background: #172033;
+  color: #fff;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+@media (max-width: 560px) {
+  .packagingSearchBar {
+    margin-left: 14px;
+    margin-right: 14px;
+    flex-direction: column;
+  }
+  .packagingSearchBar button {
+    padding: 11px;
+  }
+}
+
+/* Premium application shell — label canvases intentionally remain untouched. */
+:root {
+  --ink: #17172a;
+  --muted: #77788f;
+  --line: #e7e5ee;
+  --blue: #6d5dfc;
+  --yellow: #d9b875;
+  --paper: #ffffff;
+  --wash: #f6f5fa;
+  --midnight: #11101f;
+  --violet: #7567ff;
+  --champagne: #e6c98d;
+}
+html {
+  background: var(--wash);
+}
+body {
+  min-width: 320px;
+  color: var(--ink);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(
+      circle at 8% 3%,
+      rgba(117, 103, 255, 0.1),
+      transparent 25rem
+    ),
+    radial-gradient(
+      circle at 92% 12%,
+      rgba(230, 201, 141, 0.13),
+      transparent 23rem
+    ),
+    var(--wash);
+}
+main {
+  position: relative;
+  overflow: hidden;
+}
+main::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.28;
+  background-image: radial-gradient(
+    rgba(23, 23, 42, 0.13) 0.6px,
+    transparent 0.6px
+  );
+  background-size: 18px 18px;
+  mask-image: linear-gradient(to bottom, #000, transparent 70%);
+}
+header {
+  position: relative;
+  isolation: isolate;
+  min-height: 210px;
+  padding: 38px clamp(24px, 4vw, 64px) 42px;
+  color: #fff;
+  border: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 78% -35%,
+      rgba(144, 126, 255, 0.58),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 18% 130%,
+      rgba(217, 184, 117, 0.18),
+      transparent 28%
+    ),
+    linear-gradient(118deg, #0e0d1a 0%, #17142b 52%, #211b42 100%);
+  box-shadow: 0 20px 60px rgba(18, 16, 36, 0.2);
+}
+header::before,
+header::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 999px;
+  pointer-events: none;
+}
+header::before {
+  width: 380px;
+  height: 380px;
+  right: 9%;
+  top: -280px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 0 0 60px rgba(255, 255, 255, 0.025),
+    0 0 0 120px rgba(255, 255, 255, 0.018);
+  animation: orbitDrift 12s ease-in-out infinite alternate;
+}
+header::after {
+  width: 34%;
+  height: 1px;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, var(--champagne));
+  border-radius: 0;
+}
+.heroCopy {
+  max-width: 780px;
+  animation: riseIn 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.brandLine {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  color: #171423;
+  border-radius: 8px;
+  font-family: Georgia, serif;
+  font-weight: 800;
+  background: linear-gradient(145deg, #f6e2b8, #cda65e);
+  box-shadow: 0 7px 20px rgba(217, 184, 117, 0.24);
+}
+.eyebrow {
+  color: #e7d09f;
+  font-size: 10px;
+  letter-spacing: 2.1px;
+}
+header h1 {
+  margin: 18px 0 10px;
+  max-width: 720px;
+  font-size: clamp(32px, 4.1vw, 54px);
+  line-height: 0.98;
+  letter-spacing: -2.5px;
+  font-weight: 580;
+}
+header p {
+  max-width: 650px;
+  color: rgba(239, 237, 248, 0.7);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.headerActions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 14px;
+  animation: riseIn 0.8s 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.systemStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+}
+.systemStatus i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6fe2aa;
+  box-shadow:
+    0 0 0 4px rgba(111, 226, 170, 0.1),
+    0 0 14px #6fe2aa;
+  animation: statusPulse 2.2s ease-in-out infinite;
+}
+.uploadButton,
+.printButton {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #806fff, #5d4dea);
+  box-shadow:
+    0 12px 34px rgba(89, 73, 223, 0.33),
+    inset 0 1px rgba(255, 255, 255, 0.22);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+.uploadButton {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 218px;
+  padding: 13px 16px;
+}
+.uploadButton > span:not(.uploadIcon) {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.uploadButton small {
+  color: rgba(255, 255, 255, 0.61);
+  font-size: 9px;
+  font-weight: 500;
+}
+.uploadIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 17px;
+}
+.uploadButton:hover,
+.printButton:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08);
+  box-shadow:
+    0 17px 40px rgba(89, 73, 223, 0.4),
+    inset 0 1px rgba(255, 255, 255, 0.25);
+}
+.notice {
+  position: relative;
+  z-index: 5;
+  margin: -13px clamp(24px, 4vw, 64px) 0;
+  padding: 13px 16px;
+  color: #51451f;
+  border: 1px solid rgba(205, 166, 94, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 250, 237, 0.92);
+  box-shadow: 0 12px 30px rgba(43, 34, 10, 0.08);
+  backdrop-filter: blur(18px);
+  animation: noticeIn 0.35s ease both;
+}
+.notice button {
+  color: #776738;
+  cursor: pointer;
+}
+.tabs {
+  position: relative;
+  z-index: 2;
+  gap: 7px;
+  width: max-content;
+  margin: 24px clamp(24px, 4vw, 64px) 0;
+  padding: 5px;
+  border: 1px solid rgba(31, 27, 58, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 14px 40px rgba(30, 25, 61, 0.07);
+  backdrop-filter: blur(20px);
+}
+.tabs button {
+  position: relative;
+  min-width: 240px;
+  padding: 12px 16px 12px 48px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+.tabs button:hover {
+  background: rgba(111, 95, 244, 0.055);
+}
+.tabs button.active {
+  color: #fff;
+  border: 0;
+  background: linear-gradient(135deg, #242039, #171526);
+  box-shadow:
+    0 8px 22px rgba(24, 21, 45, 0.2),
+    inset 0 1px rgba(255, 255, 255, 0.09);
+}
+.tabs button.active span:not(.tabIcon) {
+  color: rgba(255, 255, 255, 0.56);
+}
+.tabs strong {
+  font-size: 12px;
+  letter-spacing: -0.1px;
+}
+.tabs .tabIcon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  margin-top: -13.5px;
+  color: var(--violet);
+  border-radius: 8px;
+  background: rgba(117, 103, 255, 0.1);
+  font-size: 15px;
+}
+.tabs button.active .tabIcon {
+  color: #efd9a9;
+  background: rgba(230, 201, 141, 0.12);
+}
+.stats {
+  gap: 12px;
+  margin: 18px clamp(24px, 4vw, 64px);
+  border: 0;
+  background: transparent;
+}
+.stats div {
+  position: relative;
+  min-height: 98px;
+  padding: 19px 20px;
+  border: 1px solid rgba(34, 29, 65, 0.075);
+  border-radius: 15px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 38px rgba(29, 25, 58, 0.055);
+  backdrop-filter: blur(18px);
+  animation: cardIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+.stats div::after {
+  content: "";
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  right: -35px;
+  top: -35px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(117, 103, 255, 0.14),
+    transparent 68%
+  );
+}
+.stats div:nth-child(2) {
+  animation-delay: 50ms;
+}
+.stats div:nth-child(3) {
+  animation-delay: 100ms;
+}
+.stats div:nth-child(4) {
+  animation-delay: 150ms;
+}
+.stats div:hover {
+  transform: translateY(-3px);
+  border-color: rgba(117, 103, 255, 0.18);
+  box-shadow: 0 21px 50px rgba(29, 25, 58, 0.09);
+}
+.stats span {
+  color: #8a899c;
+  font-size: 9px;
+  letter-spacing: 1.1px;
+}
+.stats strong {
+  margin-top: 9px;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -1.3px;
+}
+.stats .ready {
+  width: max-content;
+  padding: 6px 9px;
+  color: #347c5c;
+  border: 1px solid #d3ecdf;
+  border-radius: 999px;
+  background: #effaf4;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.workspace {
+  margin: 0 clamp(24px, 4vw, 64px) 54px;
+  min-height: 640px;
+  border: 1px solid rgba(34, 29, 65, 0.09);
+  border-radius: 19px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 70px rgba(28, 23, 56, 0.09);
+  backdrop-filter: blur(18px);
+  animation: workspaceIn 0.65s 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+aside {
+  border-color: #eceaf2;
+  background: rgba(249, 248, 252, 0.72);
+}
+.search {
+  padding: 16px;
+  border-color: #eceaf2;
+}
+.search input,
+.packagingSearchBar input {
+  border: 1px solid #e2dfeb;
+  border-radius: 10px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 2px rgba(18, 15, 36, 0.025);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+.search input:focus,
+.packagingSearchBar input:focus {
+  border-color: rgba(117, 103, 255, 0.55);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(117, 103, 255, 0.1);
+}
+.search button,
+.packagingSearchBar button {
+  border-radius: 9px;
+  background: #1b182b;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+.search button:hover,
+.packagingSearchBar button:hover {
+  transform: translateY(-1px);
+  background: #2b2545;
+}
+.resultHeading {
+  padding: 12px 16px;
+  color: #8a899c;
+  border-bottom: 1px solid #eceaf2;
+  background: rgba(242, 240, 247, 0.7);
+  letter-spacing: 0.8px;
+}
+.results > button {
+  position: relative;
+  padding: 15px 16px;
+  border-color: #eeecf3;
+  background: transparent;
+  transition:
+    background 160ms ease,
+    padding-left 160ms ease;
+}
+.results > button:hover {
+  padding-left: 19px;
+  background: rgba(117, 103, 255, 0.055);
+  box-shadow: none;
+}
+.results > button.active {
+  padding-left: 20px;
+  background: linear-gradient(
+    90deg,
+    rgba(117, 103, 255, 0.12),
+    rgba(117, 103, 255, 0.025)
+  );
+  box-shadow: inset 3px 0 #7567ff;
+}
+.results strong {
+  color: #29263b;
+  font-size: 12px;
+}
+.results small {
+  color: #9291a3;
+}
+.tag {
+  padding: 4px 7px;
+  color: #5a4bd5;
+  border: 1px solid rgba(117, 103, 255, 0.14);
+  border-radius: 999px;
+  background: #f0edff;
+  font-size: 8px;
+}
+.tag.fbf {
+  color: #7d5c1d;
+  border-color: rgba(205, 166, 94, 0.25);
+  background: #fff7e6;
+}
+.detailHead {
+  min-height: 98px;
+  padding: 20px 24px;
+  border-color: #eceaf2;
+  background: rgba(255, 255, 255, 0.58);
+}
+.detailHead h2 {
+  margin: 9px 0 4px;
+  color: #201d32;
+  font-size: 22px;
+  letter-spacing: -0.7px;
+}
+.detailHead p {
+  color: #8b899c;
+  font-size: 10px;
+}
+.printButton,
+.secondaryAction {
+  min-height: 42px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.secondaryAction {
+  color: #4f43bd;
+  border-color: #dcd6ff;
+  background: #f7f5ff;
+  transition:
+    transform 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+.secondaryAction:hover {
+  transform: translateY(-2px);
+  background: #efecff;
+  box-shadow: 0 8px 20px rgba(98, 80, 222, 0.12);
+}
+.actionDropdown {
+  min-width: 210px;
+  padding: 7px;
+  border-color: rgba(40, 34, 75, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 18px 45px rgba(27, 23, 52, 0.16);
+  animation: menuIn 0.18s ease both;
+}
+.actionDropdown button {
+  border-radius: 8px;
+  color: #353047;
+  padding: 11px 10px;
+}
+.actionDropdown button:hover {
+  background: #f1effb;
+}
+.record {
+  padding: 23px 25px;
+  border-color: #eceaf2;
+}
+.record h3,
+.preview h3 {
+  color: #777489;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+}
+.record > div {
+  padding: 10px 0;
+  border-color: #efedf4;
+  font-size: 10px;
+}
+.record span {
+  color: #9896a6;
+}
+.record strong {
+  color: #353143;
+  font-weight: 620;
+}
+.preview {
+  padding: 23px 26px 30px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.38)),
+    radial-gradient(
+      circle at 50% 15%,
+      rgba(117, 103, 255, 0.08),
+      transparent 18rem
+    ),
+    #f7f6fa;
+}
+.preview .label,
+.preview .packLabel {
+  animation: labelIn 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  box-shadow:
+    0 24px 55px rgba(23, 20, 45, 0.14),
+    0 2px 7px rgba(23, 20, 45, 0.08);
+}
+.labelNavigator {
+  padding: 4px;
+  border: 1px solid #e4e1eb;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 5px 15px rgba(24, 21, 43, 0.05);
+}
+.labelNavigator button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+.labelNavigator button:not(:disabled):hover {
+  color: #5749d4;
+  background: #efecff;
+}
+.labelNavigator strong {
+  color: #6255dc;
+}
+.packagingSearchBar {
+  width: min(720px, calc(100% - 48px));
+  max-width: none;
+  margin: 18px clamp(24px, 4vw, 64px) 0;
+  padding: 7px;
+  border: 1px solid rgba(35, 30, 65, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 12px 32px rgba(30, 25, 60, 0.06);
+  backdrop-filter: blur(18px);
+  animation: cardIn 0.42s ease both;
+}
+.packagingSearchBar input {
+  padding: 11px 13px;
+}
+.packagingSearchBar button {
+  padding: 0 18px;
+}
+.empty {
+  display: grid;
+  place-items: center;
+  min-height: 520px;
+  color: #9693a5;
+}
+button:focus-visible,
+label:has(input:focus-visible),
+input:focus-visible {
+  outline: 2px solid #8d7fff;
+  outline-offset: 3px;
+}
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes workspaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes labelIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes noticeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes statusPulse {
+  50% {
+    opacity: 0.62;
+    box-shadow:
+      0 0 0 6px rgba(111, 226, 170, 0.06),
+      0 0 9px #6fe2aa;
+  }
+}
+@keyframes orbitDrift {
+  to {
+    transform: translate(-20px, 12px) scale(1.04);
+  }
+}
+@media (max-width: 900px) {
+  header {
+    min-height: 245px;
+  }
+  .headerActions {
+    min-width: 210px;
+  }
+  .workspace {
+    border-radius: 15px;
+  }
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  header {
+    min-height: auto;
+    padding: 28px 22px 32px;
+    flex-direction: column;
+  }
+  header h1 {
+    letter-spacing: -1.6px;
+  }
+  .headerActions {
+    width: 100%;
+    align-items: stretch;
+  }
+  .systemStatus {
+    align-self: flex-start;
+  }
+  .uploadButton {
+    justify-content: center;
+    width: 100%;
+  }
+  .tabs {
+    width: auto;
+    margin: 18px 14px 0;
+    overflow: visible;
+  }
+  .tabs button {
+    min-width: 0;
+    flex: 1;
+    padding-left: 42px;
+  }
+  .tabs button > span:not(.tabIcon) {
+    display: none;
+  }
+  .stats {
+    margin: 14px;
+    gap: 8px;
+  }
+  .stats div {
+    min-height: 88px;
+    padding: 15px;
+  }
+  .workspace {
+    margin: 0 14px 28px;
+  }
+  .packagingSearchBar {
+    width: auto;
+    margin: 14px;
+  }
+  .detailHead {
+    gap: 16px;
+  }
+  .actionMenus {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+@media print {
+  body {
+    background: #fff !important;
+  }
+  main::before {
+    display: none !important;
+  }
+  .label,
+  .packLabel {
+    animation: none !important;
+  }
+}
+
+/* Readability pass for on-screen data; export and print dimensions stay unchanged. */
+@media screen and (min-width: 901px) {
+  .workspace {
+    grid-template-columns: 370px minmax(0, 1fr);
+  }
+  .detailGrid {
+    grid-template-columns: minmax(330px, 0.92fr) minmax(480px, 1.18fr);
+  }
+  .packagingDetail {
+    grid-template-columns: minmax(310px, 0.72fr) minmax(520px, 1.28fr);
+  }
+}
+.search input,
+.packagingSearchBar input {
+  font-size: 13px;
+}
+.search button,
+.packagingSearchBar button {
+  font-size: 12px;
+}
+.resultHeading {
+  font-size: 11px;
+}
+.results > button {
+  gap: 6px;
+  padding-top: 17px;
+  padding-bottom: 17px;
+}
+.results strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.results small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+.tag {
+  font-size: 9px;
+}
+.detailHead h2 {
+  font-size: 25px;
+}
+.detailHead p {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.record h3,
+.preview h3 {
+  font-size: 11px;
+}
+.record > div {
+  grid-template-columns: 43% 57%;
+  gap: 14px;
+  padding: 12px 0;
+  font-size: 12px;
+  line-height: 1.48;
+}
+.record span {
+  font-size: 12px;
+}
+.record strong {
+  font-size: 12px;
+}
+.previewHead span,
+.labelNavigator strong,
+.labelNavigator button {
+  font-size: 11px;
+}
+@media screen {
+  .preview .alphaLabel {
+    width: 390px;
+  }
+  .preview .fbfLabel {
+    width: 410px;
+  }
+  .preview .labelTitle,
+  .preview .barcodeTitle {
+    padding: 5px;
+    font-size: 13px;
+  }
+  .preview .labelRow {
+    font-size: 9.5px;
+    line-height: 1.2;
+  }
+  .preview .labelRow strong,
+  .preview .labelRow span {
+    padding: 4px 5px;
+  }
+  .preview .packLabel {
+    width: min(520px, 100%);
+  }
+  .preview .alphaPack strong,
+  .preview .alphaPack span {
+    font-size: 14px;
+  }
+  .preview .fbfPack .consignment,
+  .preview .fbfPack .slip {
+    padding: 7px;
+    font-size: 14px;
+  }
+  .preview .fbfPack .packHead > *,
+  .preview .fbfPack .packItem > span,
+  .preview .fbfPack .mergedBoxNo {
+    font-size: 12px;
+  }
+}
+@media (max-width: 1100px) and (min-width: 901px) {
+  .workspace {
+    grid-template-columns: 330px minmax(0, 1fr);
+  }
+  .detailGrid,
+  .packagingDetail {
+    grid-template-columns: 1fr;
+  }
+}
+@media screen and (max-width: 560px) {
+  .results strong {
+    font-size: 13px;
+  }
+  .record > div,
+  .record span,
+  .record strong {
+    font-size: 11px;
+  }
+  .preview .alphaLabel,
+  .preview .fbfLabel,
+  .preview .packLabel {
+    width: min(100%, 390px);
+  }
+}
+
+/* Physical label sizes shared by every template and every output path. */
+.size-3x4 {
+  --physical-label-width: 3in;
+  --physical-label-height: 4in;
+}
+.size-3x3 {
+  --physical-label-width: 3in;
+  --physical-label-height: 3in;
+}
+.size-3x4 .label,
+.size-3x4 .packLabel,
+.size-3x3 .label,
+.size-3x3 .packLabel {
+  width: var(--physical-label-width);
+  height: var(--physical-label-height);
+  min-height: var(--physical-label-height);
+  max-height: var(--physical-label-height);
+}
+.sizeToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin: 14px clamp(24px, 4vw, 64px) 0;
+  padding: 10px 11px 10px 14px;
+  width: min(520px, calc(100% - 48px));
+  border: 1px solid rgba(35, 30, 65, 0.09);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 32px rgba(30, 25, 60, 0.06);
+  backdrop-filter: blur(18px);
+  animation: cardIn 0.42s ease both;
+}
+.marketplaceSubmenu {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  margin: 11px clamp(24px, 4vw, 64px) 0;
+  padding: 5px;
+  border: 1px solid rgba(35, 30, 65, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 26px rgba(30, 25, 60, 0.05);
+  backdrop-filter: blur(16px);
+  animation: menuIn 0.22s ease both;
+}
+.marketplaceSubmenu > span {
+  padding: 0 9px;
+  color: #9996a8;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.marketplaceSubmenu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 102px;
+  padding: 8px 9px;
+  color: #625f70;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+.marketplaceSubmenu button:hover {
+  transform: translateY(-1px);
+  background: #f6f4fb;
+}
+.marketplaceSubmenu button i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b6b2c5;
+}
+.marketplaceSubmenu button small {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 5px;
+  color: #8c899a;
+  border-radius: 999px;
+  background: #efedf4;
+  font-size: 9px;
+}
+.marketplaceSubmenu button.alpha.active {
+  color: #5545cf;
+  border-color: #ddd7ff;
+  background: #f0edff;
+  box-shadow: 0 5px 14px rgba(92, 73, 215, 0.1);
+}
+.marketplaceSubmenu button.alpha.active i {
+  background: #7567ff;
+  box-shadow: 0 0 0 4px rgba(117, 103, 255, 0.1);
+}
+.marketplaceSubmenu button.fbf.active {
+  color: #7c5b19;
+  border-color: #f0dfb9;
+  background: #fff7e6;
+  box-shadow: 0 5px 14px rgba(180, 138, 50, 0.08);
+}
+.marketplaceSubmenu button.fbf.active i {
+  background: #d2a143;
+  box-shadow: 0 0 0 4px rgba(210, 161, 67, 0.11);
+}
+.sizeToolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sizeToolbar > div > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.sizeToolbar strong {
+  color: #302c44;
+  font-size: 11px;
+}
+.sizeToolbar small {
+  color: #9491a4;
+  font-size: 9px;
+}
+.sizeIcon {
+  display: grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  color: #6858e7;
+  border: 1px solid #ddd7ff;
+  border-radius: 9px;
+  background: #f1eeff;
+  font-size: 15px;
+}
+.sizeToolbar select {
+  min-width: 205px;
+  padding: 10px 34px 10px 12px;
+  color: #302c44;
+  border: 1px solid #dedbea;
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+  font:
+    650 11px var(--font-geist-sans),
+    Arial,
+    sans-serif;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.sizeToolbar select:focus {
+  border-color: rgba(117, 103, 255, 0.58);
+  box-shadow: 0 0 0 4px rgba(117, 103, 255, 0.1);
+}
+@media screen {
+  .size-3x4 .preview .label,
+  .size-3x4 .preview .packLabel,
+  .size-3x3 .preview .label,
+  .size-3x3 .preview .packLabel {
+    width: var(--physical-label-width);
+    height: var(--physical-label-height);
+    min-height: var(--physical-label-height);
+    max-height: var(--physical-label-height);
+  }
+}
+.size-3x4 .labelTitle,
+.size-3x4 .barcodeTitle {
+  padding: 4px;
+  font-size: 11px;
+}
+.size-3x4 .labelRow {
+  font-size: 7.5px;
+  line-height: 1.12;
+}
+.size-3x4 .labelRow strong,
+.size-3x4 .labelRow span {
+  padding: 2px 3px;
+}
+.size-3x4 .complaints {
+  min-height: 42px;
+}
+.size-3x4 .company {
+  min-height: 58px;
+}
+.size-3x4 .barcodeBox {
+  height: 82px;
+}
+.size-3x4 .fbfLabel .barcodeBox {
+  height: 78px;
+}
+.size-3x3 .labelTitle,
+.size-3x3 .barcodeTitle {
+  padding: 3px;
+  font-size: 9px;
+}
+.size-3x3 .labelRow {
+  font-size: 6.5px;
+  line-height: 1.05;
+}
+.size-3x3 .labelRow strong,
+.size-3x3 .labelRow span {
+  padding: 1.5px 2.5px;
+}
+.size-3x3 .complaints {
+  min-height: 33px;
+}
+.size-3x3 .company {
+  min-height: 46px;
+}
+.size-3x3 .barcodeBox,
+.size-3x3 .fbfLabel .barcodeBox {
+  height: 61px;
+  padding: 3px 7px;
+}
+.size-3x3 .alphaPack > div {
+  min-height: 38px;
+}
+.size-3x3 .alphaPack strong,
+.size-3x3 .alphaPack span {
+  font-size: 11px;
+}
+.size-3x3 .fbfPack .consignment,
+.size-3x3 .fbfPack .slip {
+  padding: 4px;
+  font-size: 11px;
+}
+.size-3x3 .fbfPack .packHead > * {
+  padding: 4px 2px;
+  font-size: 9px;
+}
+.size-3x3 .fbfPack .packItem > span {
+  padding: 5px 2px;
+  font-size: 8.5px;
+}
+.size-3x3 .fbfPack .mergedBoxNo {
+  padding: 5px 2px;
+  font-size: 8.5px;
+}
+.pdfPage,
+.productPdfPage {
+  width: var(--physical-label-width);
+  height: var(--physical-label-height);
+  overflow: hidden;
+}
+@media (max-width: 680px) {
+  .marketplaceSubmenu {
+    width: auto;
+    margin: 10px 14px 0;
+  }
+  .marketplaceSubmenu > span {
+    display: none;
+  }
+  .marketplaceSubmenu button {
+    flex: 1;
+  }
+  .sizeToolbar {
+    width: auto;
+    margin: 14px;
+  }
+}
+@media (max-width: 480px) {
+  .sizeToolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .sizeToolbar select {
+    width: 100%;
+  }
+  .preview {
+    overflow: auto;
+  }
+}
+@media print {
+  .sizeToolbar {
+    display: none !important;
+  }
+  .marketplaceSubmenu {
+    display: none !important;
+  }
+  .size-3x4 .label,
+  .size-3x4 .packLabel,
+  .size-3x3 .label,
+  .size-3x3 .packLabel {
+    width: var(--physical-label-width) !important;
+    height: var(--physical-label-height) !important;
+    min-height: var(--physical-label-height) !important;
+    max-height: var(--physical-label-height) !important;
+    margin: 0 !important;
+  }
+  .printPage,
+  .productPrintPage {
+    width: var(--physical-label-width);
+    height: var(--physical-label-height);
+  }
+}
+
+/* One shared cell layout for every product-label size. The row owns the column
+   geometry; each cell only centers its text vertically and keeps it left-aligned. */
+.size-3x4 .labelRow,
+.size-3x3 .labelRow,
+.size-3x5 .labelRow {
+  align-items: stretch;
+  overflow: visible;
+}
+
+.size-3x4 .labelRow > strong,
+.size-3x4 .labelRow > span,
+.size-3x3 .labelRow > strong,
+.size-3x3 .labelRow > span,
+.size-3x5 .labelRow > strong,
+.size-3x5 .labelRow > span {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  align-self: stretch;
+  height: auto !important;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+  text-align: left;
+  white-space: normal;
+}
+
+.size-3x4 .labelRow > strong,
+.size-3x4 .labelRow > span {
+  padding: 1px 3px !important;
+  line-height: 1.15;
+}
+
+.size-3x3 .labelRow > strong,
+.size-3x3 .labelRow > span {
+  padding: 0.5px 2.5px !important;
+  line-height: 1.12;
+}
+
+.barcodeBox .barcodeImage {
+  display: block;
+  flex: 1 1 auto;
+  width: auto;
+  height: 100%;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* More breathing room for the 3 x 4 product table while preserving its exact
+   physical page size. The barcode section gives up the unused space. */
+.size-3x4 .labelRow {
+  height: 15px;
+  min-height: 15px;
+}
+
+.size-3x4 .addressRow {
+  height: 50px;
+  min-height: 50px;
+}
+
+.size-3x4 .manufacturedRow {
+  height: 17px;
+  min-height: 17px;
+}
+
+.size-3x4 .complaints {
+  height: 48px;
+  min-height: 48px;
+}
+
+.size-3x4 .label > .barcodeBox {
+  min-height: 44px;
+}
+
+/* Restore the original narrow barcode footprint. Resolution stays high; only
+   its displayed physical dimensions are constrained to the reference size. */
+.barcodeBox .barcodeImage {
+  flex: 0 0 auto;
+  width: 50%;
+  height: auto;
+  max-height: calc(100% - 16px);
+}
+
+/* 3 x 5 high-readability output: the table keeps its approved geometry and
+   the additional inch is assigned to a large barcode section. */
+.size-3x5 {
+  --physical-label-width: 3in;
+  --physical-label-height: 5in;
+}
+
+.size-3x5 .label,
+.size-3x5 .packLabel {
+  width: var(--physical-label-width);
+  height: var(--physical-label-height);
+  min-height: var(--physical-label-height);
+  max-height: var(--physical-label-height);
+}
+
+.size-3x5 .label {
+  display: flex;
+  flex-direction: column;
+}
+
+.size-3x5 .labelTitle,
+.size-3x5 .barcodeTitle,
+.size-3x5 .labelRow {
+  flex: 0 0 auto;
+}
+
+.size-3x5 .labelTitle {
+  display: grid;
+  height: 25px;
+  padding: 4px;
+  place-items: center;
+  font-size: 11px;
+}
+
+.size-3x5 .labelRow {
+  height: auto;
+  min-height: 15px;
+  align-items: stretch;
+  overflow: visible;
+  font-size: 7.5px;
+  line-height: 10px;
+}
+
+.size-3x5 .labelRow > strong,
+.size-3x5 .labelRow > span {
+  padding: 1px 3px;
+  line-height: inherit;
+}
+
+.size-3x5 .addressRow {
+  height: 50px;
+  min-height: 50px;
+  font-size: 7.8px;
+}
+
+.size-3x5 .manufacturedRow {
+  height: 17px;
+  min-height: 17px;
+}
+
+.size-3x5 .complaints {
+  height: 48px;
+  min-height: 48px;
+  font-size: 8.5px;
+}
+
+.size-3x5 .company {
+  height: 58px;
+  min-height: 58px;
+}
+
+.size-3x5 .barcodeTitle {
+  display: grid;
+  height: 20px;
+  place-items: center;
+}
+
+.size-3x5 .label > .barcodeBox {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 128px;
+}
+
+.size-3x5 .barcodeBox .barcodeImage {
+  flex: 0 0 auto;
+  width: 92%;
+  height: auto;
+  max-height: calc(100% - 18px);
+}
+
+@media print {
+  .size-3x5 .label,
+  .size-3x5 .packLabel {
+    width: var(--physical-label-width) !important;
+    height: var(--physical-label-height) !important;
+    min-height: var(--physical-label-height) !important;
+    max-height: var(--physical-label-height) !important;
+    margin: 0 !important;
+  }
+}
+
+/* Keep the approved EAN number immediately below the unchanged barcode. */
+.size-3x5 .barcodeNumber {
+  bottom: 25px;
+  transform: scaleX(1.12);
+  transform-origin: center;
+}
+</style></head>
+<body>
+<main class="size-3x5">
+<div class="preview">
+  <div class="label alphaLabel" id="label">
+    <div class="labelTitle">FSN123456789012</div>
+    <div class="labelRow addressRow"><strong>Marketed By / Imported By</strong><span>NEWISH LIFESTYLE PRIVATE LIMITED, Plot No 123, Some Long Address Line That Wraps Across Multiple Lines In The Cell, City State PIN 110001</span></div><div class="labelRow manufacturedRow"><strong>Manufactured By</strong><span>Same company address line</span></div><div class="labelRow"><strong>Date Of Manufacture</strong><span>Sample value 2</span></div><div class="labelRow"><strong>Brand</strong><span>Sample value 3</span></div><div class="labelRow"><strong>Type</strong><span>Sample value 4</span></div><div class="labelRow"><strong>Size</strong><span>Sample value 5</span></div><div class="labelRow"><strong>Material</strong><span>Sample value 6</span></div><div class="labelRow"><strong>Color</strong><span>Sample value 7</span></div><div class="labelRow"><strong>Style Code</strong><span>Sample value 8</span></div><div class="labelRow"><strong>Brand Colour</strong><span>Sample value 9</span></div><div class="labelRow"><strong>Net Quantity</strong><span>Sample value 10</span></div><div class="labelRow"><strong>1 U Contains</strong><span>Sample value 11</span></div><div class="labelRow"><strong>Dimensions or Size</strong><span>Sample value 12</span></div><div class="labelRow"><strong>MRP</strong><span>Sample value 13</span></div><div class="labelRow"><strong>Country Of Origin</strong><span>Sample value 14</span></div>
+    <div class="labelRow complaints"><strong>For Consumer Complaints</strong><span>Care line<br/>Address line<br/>email@test.com</span></div>
+    <div class="barcodeBox" id="bb">
+      <img class="barcodeImage" id="bi" alt="barcode" />
+      <span class="barcodeNumber">8904297214510</span>
+    </div>
+  </div>
+</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"></script>
+<script>
+const canvas=document.createElement('canvas');
+JsBarcode(canvas,'8904297214510',{format:'EAN13',displayValue:false,margin:9,height:144,width:6.15,background:'#ffffff'});
+document.getElementById('bi').src=canvas.toDataURL('image/png');
+</script>
+</body></html>
