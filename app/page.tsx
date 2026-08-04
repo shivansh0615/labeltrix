@@ -35,6 +35,7 @@ type PackagingRun = {
   payload: Array<AlphaPack | FbfPack>;
   createdAt: string;
 };
+type AuthRole = "admin" | "viewer";
 
 function productKey(product: Product) {
   return `${product.marketplace}|${product.ean}`;
@@ -613,9 +614,22 @@ export default function Home() {
   >(null);
   const [selectionInput, setSelectionInput] = useState("");
   const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const [authRole, setAuthRole] = useState<AuthRole | null>(null);
+  const [loginRole, setLoginRole] = useState<AuthRole>("viewer");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
+  const canUpload = authRole === "admin";
+
   async function loadProducts(q = "") {
     setLoading(true);
     const r = await fetch(`/api/products?q=${encodeURIComponent(q)}`);
+    if (r.status === 401) {
+      setAuthRole(null);
+      setLoading(false);
+      return;
+    }
     const j = await r.json();
     setProducts(j.products ?? []);
     setAppliedQuery(q.trim());
@@ -642,6 +656,10 @@ export default function Home() {
   }
   async function loadRuns() {
     const r = await fetch("/api/packaging");
+    if (r.status === 401) {
+      setAuthRole(null);
+      return;
+    }
     const j = await r.json();
     setRuns(j.runs ?? []);
     setSelectedRun((current) =>
@@ -654,12 +672,74 @@ export default function Home() {
           null),
     );
   }
+  async function refreshAuth() {
+    const r = await fetch("/api/auth/me");
+    if (!r.ok) {
+      setAuthRole(null);
+      setAuthReady(true);
+      return null;
+    }
+    const j = (await r.json()) as { role?: AuthRole };
+    const role = j.role === "admin" || j.role === "viewer" ? j.role : null;
+    setAuthRole(role);
+    setAuthReady(true);
+    return role;
+  }
+  async function signIn(event?: { preventDefault(): void }) {
+    event?.preventDefault();
+    setLoginBusy(true);
+    setLoginError("");
+    try {
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: loginRole, password: loginPassword }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Sign in failed.");
+      setAuthRole(j.role === "admin" ? "admin" : "viewer");
+      setLoginPassword("");
+      setNotice(
+        j.role === "admin"
+          ? "Signed in as Admin. Upload and all tools are available."
+          : "Signed in as Viewer. You can browse, download, and print.",
+      );
+      await loadProducts();
+      await loadRuns();
+    } catch (error) {
+      setLoginError(
+        error instanceof Error ? error.message : "Sign in failed.",
+      );
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+  async function signOut() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setAuthRole(null);
+    setProducts([]);
+    setAllProducts([]);
+    setRuns([]);
+    setSelected(null);
+    setSelectedRun(null);
+    setCheckedKeys([]);
+    setNotice("Signed out.");
+  }
   useEffect(() => {
-    loadProducts();
-    loadRuns();
+    (async () => {
+      const role = await refreshAuth();
+      if (role) {
+        await loadProducts();
+        await loadRuns();
+      }
+    })();
   }, []);
   async function upload(file?: File) {
     if (!file) return;
+    if (!canUpload) {
+      setNotice("Viewer access cannot upload workbooks.");
+      return;
+    }
     setNotice("Reading both the source and format sheets...");
     try {
       const parsed = parseUpload(file, await file.arrayBuffer());
@@ -678,7 +758,7 @@ export default function Home() {
         );
         await loadProducts();
         setSelected(parsed.products[0]);
-        setMarketplaceFilter(parsed.marketplace);
+        setMarketplaceFilter(parsed.marketplace as "Alpha" | "FBF");
         setTab("master");
       } else {
         const r = await fetch("/api/packaging", {
@@ -694,7 +774,7 @@ export default function Home() {
         await loadRuns();
         setSelectedRun(j.run);
         setRunLabelIndex(0);
-        setMarketplaceFilter(parsed.marketplace);
+        setMarketplaceFilter(parsed.marketplace as "Alpha" | "FBF");
         setTab("packaging");
       }
     } catch (e) {
@@ -931,6 +1011,69 @@ export default function Home() {
   return (
     <main className={`size-${labelSize}`}>
       <style>{`@media print { @page { size: 3in ${labelSize === "3x5" ? "5in" : labelSize === "3x4" ? "4in" : "3in"}; margin: 0; } }`}</style>
+      {!authReady ? (
+        <div className="authBoot">
+          <span className="brandMark">LT</span>
+          <p>Opening LabelTrix…</p>
+        </div>
+      ) : !authRole ? (
+        <section className="authGate" aria-label="LabelTrix sign in">
+          <div className="authPanel">
+            <div className="brandLine">
+              <span className="brandMark">LT</span>
+              <span className="eyebrow">Label studio</span>
+            </div>
+            <h1>LabelTrix</h1>
+            <p className="authLead">
+              Choose your access level. Admin can upload data. Viewer can browse,
+              download, and print.
+            </p>
+            <form className="authForm" onSubmit={signIn}>
+              <div className="authRoleSwitch" role="group" aria-label="Access level">
+                <button
+                  type="button"
+                  className={loginRole === "admin" ? "active" : ""}
+                  onClick={() => setLoginRole("admin")}
+                >
+                  Admin
+                  <small>Upload + full tools</small>
+                </button>
+                <button
+                  type="button"
+                  className={loginRole === "viewer" ? "active" : ""}
+                  onClick={() => setLoginRole("viewer")}
+                >
+                  Viewer
+                  <small>View · download · print</small>
+                </button>
+              </div>
+              <label className="authField">
+                Password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  placeholder={
+                    loginRole === "admin"
+                      ? "Admin access password"
+                      : "Viewer access password"
+                  }
+                />
+              </label>
+              {loginError ? <p className="authError">{loginError}</p> : null}
+              <button
+                type="submit"
+                className="authSubmit"
+                disabled={loginBusy || !loginPassword}
+              >
+                {loginBusy ? "Signing in…" : "Enter LabelTrix"}
+              </button>
+            </form>
+          </div>
+        </section>
+      ) : (
+        <>
       <header>
         <div className="heroCopy">
           <div className="brandLine">
@@ -944,21 +1087,36 @@ export default function Home() {
           </p>
         </div>
         <div className="headerActions">
-          <span className="systemStatus">
-            <i />
-            Ready
-          </span>
-          <label className="uploadButton">
-            <span className="uploadIcon">↗</span>
-            <span>
-              Upload workbook<small>XLSX · approved format</small>
+          <div className="sessionMeta">
+            <span className={`roleBadge ${authRole}`}>
+              {authRole === "admin" ? "Admin" : "Viewer"}
             </span>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(e) => upload(e.target.files?.[0])}
-            />
-          </label>
+            <span className="systemStatus">
+              <i />
+              Ready
+            </span>
+            <button type="button" className="signOutButton" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+          {canUpload ? (
+            <label className="uploadButton">
+              <span className="uploadIcon">↗</span>
+              <span>
+                Upload workbook<small>XLSX · approved format</small>
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => upload(e.target.files?.[0])}
+              />
+            </label>
+          ) : (
+            <div className="viewerHint">
+              View-only access
+              <small>Download and print enabled</small>
+            </div>
+          )}
         </div>
       </header>
       {notice && (
@@ -1398,7 +1556,11 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <div className="empty">Upload or select a product.</div>
+                <div className="empty">
+                  {canUpload
+                    ? "Upload or select a product."
+                    : "Select a product to preview, download, or print."}
+                </div>
               )}
               {checkedProducts.length > 0 && (
                 <div className="productPdfSource" aria-hidden="true">
@@ -1638,11 +1800,15 @@ export default function Home() {
                 </>
               ) : (
                 <div className="empty">
-                  Upload an Alpha or FBF Packaging List to create a run.
+                  {canUpload
+                    ? "Upload an Alpha or FBF Packaging List to create a run."
+                    : "Select a packaging run to preview, download, or print."}
                 </div>
               )}
             </article>
           </section>
+        </>
+      )}
         </>
       )}
     </main>

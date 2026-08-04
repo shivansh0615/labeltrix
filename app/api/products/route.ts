@@ -1,6 +1,12 @@
 import { and, eq, like, or, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { products } from "../../../db/schema";
+import {
+  AuthError,
+  authErrorResponse,
+  requireAdmin,
+  requireSession,
+} from "../../lib/auth";
 
 async function ensureSchema() {
   const db = getDb();
@@ -34,6 +40,7 @@ async function ensureSchema() {
 
 export async function GET(request: Request) {
   try {
+    await requireSession(request);
     const db = await ensureSchema();
     const q = new URL(request.url).searchParams.get("q")?.trim() ?? "";
     const where = q
@@ -58,6 +65,7 @@ export async function GET(request: Request) {
       })),
     });
   } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
     return Response.json(
       {
         error:
@@ -70,6 +78,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await requireAdmin(request);
     const db = await ensureSchema();
     const body = (await request.json()) as {
       products?: Array<Record<string, unknown>>;
@@ -111,6 +120,7 @@ export async function POST(request: Request) {
     }
     return Response.json({ saved });
   } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
     return Response.json(
       { error: error instanceof Error ? error.message : "Import failed" },
       { status: 500 },

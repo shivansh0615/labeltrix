@@ -2320,11 +2320,226 @@ input:focus-visible {
   }
 }
 
+.authBoot,
+.authGate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+.authBoot {
+  gap: 16px;
+  color: rgba(247, 245, 241, 0.7);
+  background:
+    radial-gradient(
+      ellipse 50% 60% at 80% 10%,
+      rgba(201, 168, 106, 0.18),
+      transparent 55%
+    ),
+    linear-gradient(145deg, #0a0a0a 0%, #161411 48%, #1c1812 100%);
+}
+.authBoot p {
+  margin: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.authGate {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 15% -10%,
+      rgba(201, 168, 106, 0.14),
+      transparent 50%
+    ),
+    linear-gradient(180deg, #f3f0ea 0%, #efece6 100%);
+}
+.authPanel {
+  width: min(440px, 100%);
+  padding: 36px 32px 32px;
+  border: 1px solid rgba(18, 17, 16, 0.08);
+  border-radius: 2px;
+  background: rgba(255, 252, 248, 0.94);
+  box-shadow: 0 24px 60px rgba(18, 17, 16, 0.1);
+  animation: riseIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.authPanel h1 {
+  margin: 18px 0 10px;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(42px, 8vw, 56px);
+  font-weight: 500;
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  color: #121110;
+}
+.authLead {
+  margin: 0 0 28px;
+  color: #6f6d68;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.65;
+}
+.authForm {
+  display: grid;
+  gap: 16px;
+}
+.authRoleSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.authRoleSwitch button {
+  display: grid;
+  gap: 4px;
+  padding: 14px 12px;
+  text-align: left;
+  border: 1px solid rgba(18, 17, 16, 0.1);
+  border-radius: 2px;
+  background: #f7f5f1;
+  color: #3d3a34;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+.authRoleSwitch button small {
+  color: #8a877f;
+  font-size: 10px;
+  font-weight: 400;
+}
+.authRoleSwitch button.active {
+  color: #f7f5f1;
+  border-color: #0c0c0c;
+  background: #0c0c0c;
+}
+.authRoleSwitch button.active small {
+  color: rgba(201, 168, 106, 0.85);
+}
+.authField {
+  display: grid;
+  gap: 8px;
+  color: #8a877f;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.authField input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid #d9d4cb;
+  border-radius: 2px;
+  background: #fffcf8;
+  color: #121110;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+}
+.authField input:focus {
+  outline: none;
+  border-color: rgba(201, 168, 106, 0.7);
+  box-shadow: 0 0 0 3px rgba(201, 168, 106, 0.15);
+}
+.authError {
+  margin: 0;
+  color: #8a3d32;
+  font-size: 12px;
+}
+.authSubmit {
+  border: 1px solid rgba(201, 168, 106, 0.45);
+  border-radius: 2px;
+  padding: 14px 16px;
+  background: linear-gradient(160deg, #d4b57a, #b89355);
+  color: #0c0c0c;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.authSubmit:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.authSubmit:hover:not(:disabled) {
+  background: linear-gradient(160deg, #e0c48a, #c9a86a);
+}
+.sessionMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.roleBadge {
+  padding: 6px 10px;
+  border: 1px solid rgba(201, 168, 106, 0.35);
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.roleBadge.admin {
+  color: #0c0c0c;
+  background: var(--brass);
+  border-color: transparent;
+}
+.roleBadge.viewer {
+  color: rgba(247, 245, 241, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+}
+.signOutButton {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+  padding: 6px 10px;
+  background: transparent;
+  color: rgba(247, 245, 241, 0.78);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.signOutButton:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.viewerHint {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+  padding: 12px 14px;
+  border: 1px solid rgba(201, 168, 106, 0.28);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(247, 245, 241, 0.88);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+.viewerHint small {
+  color: rgba(247, 245, 241, 0.5);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 @media print {
   body {
     background: #fff !important;
   }
   main::before {
+    display: none !important;
+  }
+  .authBoot,
+  .authGate,
+  .sessionMeta,
+  .viewerHint,
+  .signOutButton,
+  .roleBadge {
     display: none !important;
   }
   .label,

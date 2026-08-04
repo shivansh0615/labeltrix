@@ -14,6 +14,14 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  vars: {
+    LABELTRIX_ADMIN_PASSWORD:
+      process.env.LABELTRIX_ADMIN_PASSWORD || "Kharesiya$$9911",
+    LABELTRIX_VIEWER_PASSWORD:
+      process.env.LABELTRIX_VIEWER_PASSWORD || "Viewer@123",
+    LABELTRIX_AUTH_SECRET:
+      process.env.LABELTRIX_AUTH_SECRET || "labeltrix-dev-secret-change-me",
+  },
   d1_databases: d1
     ? [
         {

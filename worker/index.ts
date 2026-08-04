@@ -5,6 +5,9 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  LABELTRIX_ADMIN_PASSWORD?: string;
+  LABELTRIX_VIEWER_PASSWORD?: string;
+  LABELTRIX_AUTH_SECRET?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
