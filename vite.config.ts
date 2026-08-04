@@ -55,6 +55,10 @@ export default defineConfig(async () => {
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
+    preview: {
+      // Coolify (and other reverse proxies) forward the public Host header.
+      allowedHosts: true,
+    },
     plugins: [
       vinext(),
       sites(),
