@@ -38,7 +38,7 @@ test("product label cells stay left-aligned while centering text vertically", as
   );
 });
 
-test("PDF export embeds full-bleed Chromium screenshots at physical size", async () => {
+test("PDF export prefers local Chromium and falls back in the browser", async () => {
   const page = await readFile(pageUrl, "utf8");
   const server = await readFile(serverUrl, "utf8");
   const packageJson = JSON.parse(await readFile(packageUrl, "utf8"));
@@ -47,10 +47,20 @@ test("PDF export embeds full-bleed Chromium screenshots at physical size", async
   assert.equal(packageJson.dependencies?.html2canvas, undefined);
   assert.equal(packageJson.dependencies?.jspdf, undefined);
   assert.match(packageJson.dependencies?.["pdf-lib"] || "", /^[\^~]?1\.17\.1$/);
+  assert.match(
+    packageJson.dependencies?.["html-to-image"] || "",
+    /^[\^~]?1\./,
+  );
   assert.equal(packageJson.devDependencies?.["playwright-core"], "1.62.0");
   assert.match(page, /class="nativePdfPage size-\$\{labelSize\}"/);
   assert.match(page, /\$\{node\.innerHTML\}/);
+  assert.match(page, /isNativePdfServiceReady/);
+  assert.match(page, /downloadPdfViaChromium/);
+  assert.match(page, /downloadPdfViaBrowser/);
   assert.match(page, /fetch\("http:\/\/127\.0\.0\.1:3100\/pdf"/);
+  assert.match(page, /fetch\("http:\/\/127\.0\.0\.1:3100\/health"/);
+  assert.match(page, /html-to-image/);
+  assert.match(page, /toThermalPngDataUrl/);
   assert.match(page, /chunkSize/);
   assert.match(page, /PDFDocument/);
   assert.match(server, /await page\.emulateMedia\(\{ media: "screen" \}\)/);

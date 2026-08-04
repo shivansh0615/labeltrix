@@ -1,4 +1,4 @@
-import { desc, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { packagingRuns } from "../../../db/schema";
 import {
@@ -92,6 +92,45 @@ export async function POST(request: Request) {
       {
         error:
           error instanceof Error ? error.message : "Packaging import failed",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    await requireAdmin(request);
+    const db = await ensureSchema();
+    const body = (await request.json()) as { id?: unknown };
+    const id = Number(body.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return Response.json(
+        { error: "Choose a packaging run to delete." },
+        { status: 400 },
+      );
+    }
+    const existing = await db
+      .select({ id: packagingRuns.id })
+      .from(packagingRuns)
+      .where(eq(packagingRuns.id, id))
+      .limit(1);
+    if (!existing.length) {
+      return Response.json(
+        { error: "That packaging run was not found." },
+        { status: 404 },
+      );
+    }
+    await db.delete(packagingRuns).where(eq(packagingRuns.id, id));
+    return Response.json({ deleted: 1, id });
+  } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to delete packaging run",
       },
       { status: 500 },
     );

@@ -228,8 +228,6 @@ function Barcode({
   );
 }
 const alphaFields = [
-  "Marketed By / Imported By",
-  "Manufactured By ",
   "Date Of Manufacture ",
   "Brand ",
   "Type",
@@ -265,11 +263,20 @@ function ProductLabel({ product }: { product: Product }) {
     return (
       <div className="label alphaLabel">
         <div className="labelTitle">{product.fsn}</div>
+        <div className="labelRow addressRow">
+          <strong>
+            Marketed By / Imported By
+            <br />
+            Manufactured By
+          </strong>
+          <span>
+            {value(d, "Marketed By / Imported By")}
+            <br />
+            {value(d, "Manufactured By ") || "—"}
+          </span>
+        </div>
         {alphaFields.map((k) => (
-          <div
-            className={`labelRow ${k === "Marketed By / Imported By" ? "addressRow" : ""} ${k === "Manufactured By " ? "manufacturedRow" : ""}`}
-            key={k}
-          >
+          <div className="labelRow" key={k}>
             <strong>{k.trim()}</strong>
             <span>{value(d, k)}</span>
           </div>
@@ -392,6 +399,167 @@ async function waitForLabelAssets(nodes: HTMLElement[]) {
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
+}
+
+const PDF_PAGE_SIZES = {
+  "3x5": { widthPoints: 216, heightPoints: 360 },
+  "3x4": { widthPoints: 216, heightPoints: 288 },
+  "3x3": { widthPoints: 216, heightPoints: 216 },
+} as const;
+
+async function isNativePdfServiceReady() {
+  try {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 800);
+    const response = await fetch("http://127.0.0.1:3100/health", {
+      signal: controller.signal,
+    });
+    window.clearTimeout(timer);
+    if (!response.ok) return false;
+    const body = (await response.json().catch(() => null)) as {
+      ready?: boolean;
+    } | null;
+    return Boolean(body?.ready);
+  } catch {
+    return false;
+  }
+}
+
+/** Flatten antialiased gray into pure black/white for thermal printers. */
+async function toThermalPngDataUrl(dataUrl: string) {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Unable to prepare label image for PDF.");
+  ctx.drawImage(image, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    const value = luma < 200 ? 0 : 255;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+    data[i + 3] = 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
+function triggerPdfDownload(bytes: Uint8Array, fileName: string) {
+  const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+async function downloadPdfViaChromium(
+  nodes: HTMLElement[],
+  indexes: number[],
+  labelSize: "3x5" | "3x4" | "3x3",
+  fileName: string,
+) {
+  const chunkSize = 40;
+  const { PDFDocument } = await import("pdf-lib");
+  const merged = await PDFDocument.create();
+
+  for (let start = 0; start < indexes.length; start += chunkSize) {
+    const slice = indexes.slice(start, start + chunkSize);
+    const response = await fetch("http://127.0.0.1:3100/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        html: nativePdfDocument(nodes, slice, labelSize),
+        labelSize,
+        fileName,
+      }),
+    });
+
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(result?.error || "Native PDF export failed.");
+    }
+
+    const part = await PDFDocument.load(await response.arrayBuffer());
+    const pages = await merged.copyPages(part, part.getPageIndices());
+    for (const page of pages) merged.addPage(page);
+  }
+
+  triggerPdfDownload(await merged.save(), fileName);
+}
+
+async function downloadPdfViaBrowser(
+  nodes: HTMLElement[],
+  indexes: number[],
+  labelSize: "3x5" | "3x4" | "3x3",
+  fileName: string,
+) {
+  const chosenNodes = indexes.map((index) => nodes[index]);
+  const size = PDF_PAGE_SIZES[labelSize];
+  const { toPng } = await import("html-to-image");
+  const { PDFDocument } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  const batchSize = 12;
+
+  const stage = document.createElement("div");
+  stage.setAttribute("aria-hidden", "true");
+  stage.style.cssText =
+    "position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:0.02;background:#fff;";
+  document.body.appendChild(stage);
+
+  try {
+    for (let start = 0; start < chosenNodes.length; start += batchSize) {
+      const batch = chosenNodes.slice(start, start + batchSize);
+      for (const node of batch) {
+        if (!node) throw new Error("One or more selected labels could not be found.");
+        const clone = node.cloneNode(true) as HTMLElement;
+        clone.style.margin = "0";
+        clone.style.transform = "none";
+        clone.style.boxShadow = "none";
+        stage.replaceChildren(clone);
+        await waitForLabelAssets([clone]);
+
+        let dataUrl = await toPng(clone, {
+          pixelRatio: 3,
+          cacheBust: true,
+          backgroundColor: "#ffffff",
+          style: {
+            transform: "none",
+            animation: "none",
+            boxShadow: "none",
+          },
+        });
+        dataUrl = await toThermalPngDataUrl(dataUrl);
+        const pngBytes = await fetch(dataUrl).then((response) =>
+          response.arrayBuffer(),
+        );
+        const image = await pdf.embedPng(pngBytes);
+        const page = pdf.addPage([size.widthPoints, size.heightPoints]);
+        page.drawImage(image, {
+          x: 0,
+          y: 0,
+          width: size.widthPoints,
+          height: size.heightPoints,
+        });
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  } finally {
+    stage.remove();
+  }
+
+  triggerPdfDownload(await pdf.save(), fileName);
 }
 
 function nativePdfDocument(
@@ -527,53 +695,16 @@ async function downloadNativePdf(
   }
   await waitForLabelAssets(chosenNodes);
 
-  // Keep each Chromium render small — thousands of labels in one HTML request
-  // will exhaust memory. Chunks are merged client-side with pdf-lib.
-  const chunkSize = 40;
-  const { PDFDocument } = await import("pdf-lib");
-  const merged = await PDFDocument.create();
-
-  for (let start = 0; start < indexes.length; start += chunkSize) {
-    const slice = indexes.slice(start, start + chunkSize);
-    let response: Response;
-    try {
-      response = await fetch("http://127.0.0.1:3100/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          html: nativePdfDocument(nodes, slice, labelSize),
-          labelSize,
-          fileName,
-        }),
-      });
-    } catch {
-      throw new Error(
-        "The native PDF service is not running. Restart the dashboard and try again.",
-      );
+  try {
+    if (await isNativePdfServiceReady()) {
+      await downloadPdfViaChromium(nodes, indexes, labelSize, fileName);
+      return;
     }
-
-    if (!response.ok) {
-      const result = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      throw new Error(result?.error || "Native PDF export failed.");
-    }
-
-    const part = await PDFDocument.load(await response.arrayBuffer());
-    const pages = await merged.copyPages(part, part.getPageIndices());
-    for (const page of pages) merged.addPage(page);
+    await downloadPdfViaBrowser(nodes, indexes, labelSize, fileName);
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error("PDF export failed. Please try again.");
   }
-
-  const bytes = await merged.save();
-  const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 function RunLabel({ run, index = 0 }: { run: PackagingRun; index?: number }) {
   const label = run.payload[index];
@@ -982,6 +1113,80 @@ export default function Home() {
       setDownloading(false);
     }
   }
+  async function deleteCheckedProducts() {
+    if (!canUpload) {
+      setNotice("Viewer access cannot delete data.");
+      return;
+    }
+    if (!checkedProducts.length) {
+      setNotice("Select one or more products from the list first.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete ${checkedProducts.length} selected product${checkedProducts.length === 1 ? "" : "s"}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setActionMenu(null);
+    try {
+      const r = await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: checkedProducts.map((product) => ({
+            marketplace: product.marketplace,
+            ean: product.ean,
+          })),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Delete failed.");
+      const removedKeys = new Set(checkedProducts.map(productKey));
+      setCheckedKeys((current) =>
+        current.filter((key) => !removedKeys.has(key)),
+      );
+      if (selected && removedKeys.has(productKey(selected))) {
+        setSelected(null);
+      }
+      await loadProducts(appliedQuery);
+      const allRes = await fetch("/api/products");
+      if (allRes.ok) {
+        const allJson = await allRes.json();
+        setAllProducts(allJson.products ?? []);
+      }
+      setNotice(
+        `${j.deleted ?? checkedProducts.length} product${(j.deleted ?? checkedProducts.length) === 1 ? "" : "s"} deleted.`,
+      );
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Delete failed.");
+    }
+  }
+  async function deleteSelectedPackagingRun() {
+    if (!canUpload) {
+      setNotice("Viewer access cannot delete data.");
+      return;
+    }
+    if (!selectedRun) return;
+    const confirmed = window.confirm(
+      `Delete packaging run "${selectedRun.sourceFile}" (${selectedRun.labelCount} labels)? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setActionMenu(null);
+    try {
+      const r = await fetch("/api/packaging", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedRun.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Delete failed.");
+      setSelectedRun(null);
+      setRunLabelIndex(0);
+      await loadRuns();
+      setNotice(`Packaging run deleted.`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Delete failed.");
+    }
+  }
   function toggleAllVisibleProducts() {
     const visibleKeys = visibleProducts.map(productKey);
     setCheckedKeys((current) =>
@@ -1359,6 +1564,15 @@ export default function Home() {
                         >
                           Clear
                         </button>
+                        {canUpload ? (
+                          <button
+                            type="button"
+                            className="resultSelectDelete"
+                            onClick={deleteCheckedProducts}
+                          >
+                            Delete ({checkedKeys.length})
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="resultSelectDownload"
@@ -1662,6 +1876,15 @@ export default function Home() {
                       </select>
                     </label>
                     <div className="actionMenus">
+                      {canUpload ? (
+                        <button
+                          type="button"
+                          className="dangerAction"
+                          onClick={deleteSelectedPackagingRun}
+                        >
+                          Delete run
+                        </button>
+                      ) : null}
                       <div className="actionMenu">
                         <button
                           className="printButton"

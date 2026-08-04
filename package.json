@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "html-to-image": "^1.11.13",
     "jsbarcode": "^3.12.3",
     "next": "16.2.6",
     "pdf-lib": "^1.17.1",

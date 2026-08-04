@@ -127,3 +127,46 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    await requireAdmin(request);
+    const db = await ensureSchema();
+    const body = (await request.json()) as {
+      items?: Array<{ marketplace?: unknown; ean?: unknown }>;
+    };
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) {
+      return Response.json(
+        { error: "Select one or more products to delete." },
+        { status: 400 },
+      );
+    }
+    let deleted = 0;
+    for (const item of items) {
+      const marketplace = String(item.marketplace ?? "").trim();
+      const ean = String(item.ean ?? "").trim();
+      if (!marketplace || !ean) continue;
+      const existing = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(
+          and(eq(products.marketplace, marketplace), eq(products.ean, ean)),
+        )
+        .limit(1);
+      if (!existing.length) continue;
+      await db.delete(products).where(eq(products.id, existing[0].id));
+      deleted += 1;
+    }
+    return Response.json({ deleted });
+  } catch (error) {
+    if (error instanceof AuthError) return authErrorResponse(error);
+    return Response.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to delete products",
+      },
+      { status: 500 },
+    );
+  }
+}

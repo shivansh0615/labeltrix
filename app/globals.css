@@ -280,7 +280,8 @@ aside {
   gap: 6px;
 }
 .resultSelectClear,
-.resultSelectDownload {
+.resultSelectDownload,
+.resultSelectDelete {
   border: 0;
   border-radius: 6px;
   padding: 6px 10px;
@@ -295,6 +296,13 @@ aside {
 .resultSelectClear:hover {
   color: #2b2840;
   background: rgba(28, 23, 56, 0.05);
+}
+.resultSelectDelete {
+  background: #f4e8e6;
+  color: #8a3d32;
+}
+.resultSelectDelete:hover {
+  background: #ead6d2;
 }
 .resultSelectDownload {
   background: #1b182b;
@@ -1044,14 +1052,10 @@ article {
   line-height: 1;
 }
 .size-3x4 .addressRow {
-  height: 36px;
-  min-height: 36px;
+  height: 49px;
+  min-height: 49px;
   font-size: 7px;
   line-height: 1.1;
-}
-.size-3x4 .manufacturedRow {
-  height: 13px;
-  min-height: 13px;
 }
 .size-3x4 .complaints {
   height: 34px;
@@ -1085,14 +1089,10 @@ article {
   line-height: 1;
 }
 .size-3x3 .addressRow {
-  height: 30px;
-  min-height: 30px;
+  height: 41px;
+  min-height: 41px;
   font-size: 5.8px;
   line-height: 1.05;
-}
-.size-3x3 .manufacturedRow {
-  height: 11px;
-  min-height: 11px;
 }
 .size-3x3 .complaints {
   height: 32px;
@@ -2037,6 +2037,24 @@ aside {
   transform: translateY(-1px);
   background: #efece6;
   box-shadow: none;
+}
+.dangerAction {
+  min-height: 42px;
+  padding: 11px 16px;
+  border: 1px solid rgba(138, 61, 50, 0.28);
+  border-radius: 2px;
+  background: #f7ecea;
+  color: #8a3d32;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    background 180ms ease;
+}
+.dangerAction:hover {
+  transform: translateY(-1px);
+  background: #f0ddd9;
 }
 .actionDropdown {
   min-width: 210px;
@@ -3050,13 +3068,8 @@ input:focus-visible {
 }
 
 .size-3x4 .addressRow {
-  height: 36px;
-  min-height: 36px;
-}
-
-.size-3x4 .manufacturedRow {
-  height: 13px;
-  min-height: 13px;
+  height: 49px;
+  min-height: 49px;
 }
 
 .size-3x4 .complaints {
@@ -3144,14 +3157,9 @@ input:focus-visible {
 }
 
 .size-3x5 .addressRow {
-  height: 50px;
-  min-height: 50px;
+  height: 67px;
+  min-height: 67px;
   font-size: 7.8px;
-}
-
-.size-3x5 .manufacturedRow {
-  height: 17px;
-  min-height: 17px;
 }
 
 .size-3x5 .complaints {
