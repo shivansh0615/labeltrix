@@ -1,100 +1,119 @@
-# vinext-starter
+# LabelTrix
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Flipkart Alpha / FBF label tool: upload Excel product masters and packaging runs, search and preview labels, then download sharp vector PDFs or print.
+
+Stack: [vinext](https://github.com/cloudflare/vinext) (Next on Cloudflare Workers) + Neon Postgres (Drizzle) + pdf-lib / JsBarcode.
 
 ## Prerequisites
 
 - Node.js `>=22.13.0`
+- A [Neon](https://neon.tech) project (free tier is enough for typical use)
 
-## Quick Start
+## Quick start
 
 ```bash
 npm install
+```
+
+1. Copy env template values into **`.dev.vars`** (local secrets; gitignored):
+
+```bash
+# .dev.vars
+LABELTRIX_ADMIN_PASSWORD=your-admin-password
+LABELTRIX_VIEWER_PASSWORD=your-viewer-password
+LABELTRIX_AUTH_SECRET=change-me-to-a-long-random-string
+DATABASE_URL=postgresql://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require
+```
+
+See [`.env.example`](.env.example) for the same keys.
+
+2. Start the app:
+
+```bash
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Open [http://localhost:3000](http://localhost:3000), sign in, upload product / packaging Excel files.
 
-## Included Shape
+Tables are created automatically on first API use (`CREATE TABLE IF NOT EXISTS`).
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## What it does
 
-## Workspace Auth Headers
+| Area | Description |
+|------|-------------|
+| **Product Master** | One-time barcode workbooks (Alpha EAN / FBF FSN). Search, multi-select, download PDF, delete (admin). |
+| **Packaging** | Recurring non-barcode box labels. Preview runs, download PDF, delete run (admin). |
+| **Label sizes** | `3x5`, `3x4`, `3x3` (inches). |
+| **PDF** | Client-side vector PDF (`app/lib/vector-label-pdf.ts`) — Helvetica text + embedded barcodes, Terry Blue–style grid. |
+| **Auth** | Shared role passwords: **Admin** (upload/delete) and **Viewer** (view/download/print). |
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+## Environment variables
 
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
+| Variable | Required | Where |
+|----------|----------|--------|
+| `DATABASE_URL` | Yes | Neon connection string |
+| `LABELTRIX_ADMIN_PASSWORD` | Yes | Admin login |
+| `LABELTRIX_VIEWER_PASSWORD` | Yes | Viewer login |
+| `LABELTRIX_AUTH_SECRET` | Yes | Signs session cookies |
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+**Local:** put them in `.dev.vars` (not `.env`). Wrangler/vinext loads `.dev.vars` for `npm run dev`.
 
-Treat the full name as optional and fall back to email when it is absent:
+**Production (APICloud / host):** set the same keys as secrets/env vars in the dashboard — at minimum `DATABASE_URL` after the Neon migration. Redeploy after changing secrets.
 
-```tsx
-import { headers } from "next/headers";
+Do not commit `.dev.vars` or real connection strings.
 
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
+## Database (Neon)
 
-  const displayName = fullName ?? email;
-  // ...
-}
+- Schema: [`db/schema.ts`](db/schema.ts) (Postgres via Drizzle)
+- Client: [`db/index.ts`](db/index.ts) (`@neondatabase/serverless` + `drizzle-orm/neon-http`)
+- APIs: [`app/api/products/route.ts`](app/api/products/route.ts), [`app/api/packaging/route.ts`](app/api/packaging/route.ts)
+
+Data lives in Neon, so redeploying the app does **not** wipe products/packaging (as long as production uses the same `DATABASE_URL`).
+
+Practical UI load limit: **10,000** products per list request. Packaging history: latest **50** runs.
+
+## Project layout
+
+```
+app/                  UI + API routes
+app/lib/auth.ts       Session / role passwords
+app/lib/vector-label-pdf.ts   Vector label PDF builder
+db/                   Neon + Drizzle schema
+scripts/dev.mjs       Local dev (app + PDF helper)
+.openai/hosting.json  Sites hosting (D1 disabled; data is Neon)
+.dev.vars             Local secrets (gitignored)
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## Commands
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Local development |
+| `npm run build` | Production build |
+| `npm start` | Run built app |
+| `npm test` | Build + smoke tests |
+| `npm run lint` | ESLint |
+| `npm run db:generate` | Generate Drizzle migrations after schema edits |
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Deploy notes
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+1. Push code to your Git remote (GitLab / etc.).
+2. On the host, set `DATABASE_URL` (and auth secrets if not already set).
+3. Redeploy.
+4. Re-upload Excel masters once on the live URL if the Neon DB is new.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+Local Neon data and production Neon data are the same only if both use the **same** `DATABASE_URL`.
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+## Roles
 
-## Useful Commands
+- **Admin** — upload, delete, full tools  
+- **Viewer** — view, search, download PDF, print  
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+Sessions are cookie-based HMAC tokens (`LABELTRIX_AUTH_SECRET`).
 
-## Learn More
+## Learn more
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- [vinext](https://github.com/cloudflare/vinext)
+- [Neon](https://neon.tech/docs)
+- [Drizzle + Neon](https://orm.drizzle.team/docs/get-started/neon-new)
+- [pdf-lib](https://pdf-lib.js.org/)
