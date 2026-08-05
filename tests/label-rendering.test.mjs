@@ -47,26 +47,14 @@ test("PDF export prefers local Chromium and falls back in the browser", async ()
   assert.equal(packageJson.dependencies?.html2canvas, undefined);
   assert.equal(packageJson.dependencies?.jspdf, undefined);
   assert.match(packageJson.dependencies?.["pdf-lib"] || "", /^[\^~]?1\.17\.1$/);
-  assert.match(
-    packageJson.dependencies?.["html-to-image"] || "",
-    /^[\^~]?1\./,
-  );
+  assert.match(packageJson.dependencies?.jsbarcode || "", /./);
   assert.equal(packageJson.devDependencies?.["playwright-core"], "1.62.0");
-  assert.match(page, /class="nativePdfPage size-\$\{labelSize\}"/);
-  assert.match(page, /\$\{node\.innerHTML\}/);
-  assert.match(page, /isNativePdfServiceReady/);
-  assert.match(page, /downloadPdfViaChromium/);
-  assert.match(page, /downloadPdfViaBrowser/);
-  assert.match(page, /fetch\("http:\/\/127\.0\.0\.1:3100\/pdf"/);
-  assert.match(page, /fetch\("http:\/\/127\.0\.0\.1:3100\/health"/);
-  assert.match(page, /html-to-image/);
-  assert.match(page, /toThermalPngDataUrl/);
-  assert.match(page, /chunkSize/);
-  assert.match(page, /PDFDocument/);
+  assert.match(page, /buildProductsPdf/);
+  assert.match(page, /buildPackagingPdf/);
+  assert.match(page, /vector-label-pdf/);
+  assert.match(page, /downloadPdfBytes/);
   assert.match(server, /await page\.emulateMedia\(\{ media: "screen" \}\)/);
   assert.match(server, /embedPngPage/);
-  assert.match(server, /deviceScaleFactor:\s*scaleFactor/);
-  assert.match(server, /locators\.nth\(index\)/);
   assert.doesNotMatch(server, /page\.pdf\(/);
 });
 

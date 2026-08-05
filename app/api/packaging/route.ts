@@ -10,8 +10,8 @@ import {
 
 async function ensureSchema() {
   const db = getDb();
-  await db.run(sql`CREATE TABLE IF NOT EXISTS packaging_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS packaging_runs (
+    id SERIAL PRIMARY KEY,
     marketplace TEXT NOT NULL,
     source_sheet TEXT NOT NULL,
     format_sheet TEXT NOT NULL,
@@ -20,7 +20,7 @@ async function ensureSchema() {
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
-  await db.run(
+  await db.execute(
     sql`CREATE INDEX IF NOT EXISTS idx_packaging_runs_created ON packaging_runs(created_at)`,
   );
   return db;

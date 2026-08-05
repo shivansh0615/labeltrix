@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import JsBarcode from "jsbarcode";
+import {
+  buildPackagingPdf,
+  buildProductsPdf,
+  downloadPdfBytes,
+} from "./lib/vector-label-pdf";
 
 type Product = {
   id?: number;
@@ -936,10 +941,6 @@ export default function Home() {
     setActionMenu(null);
     setDownloading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const nodes = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-product-pdf-label]"),
-      );
       const currentIndex = Math.max(
         0,
         sourceProducts.findIndex(
@@ -953,16 +954,22 @@ export default function Home() {
           ? [currentIndex]
           : scope === "selected"
             ? requestedIndexes
-            : nodes.map((_, i) => i);
+            : sourceProducts.map((_, i) => i);
+      const productsForPdf = indexes.map((index) => {
+        const product = sourceProducts[index];
+        if (!product) throw new Error("One or more selected labels could not be found.");
+        return product;
+      });
       const base = (selected.sourceFile || "product-labels").replace(
         /\.[^.]+$/,
         "",
       );
       const fileName = `${base}-${scope === "current" ? `EAN-${selected.ean}` : scope === "selected" ? "selected-labels" : "whole-file"}.pdf`;
-      await downloadNativePdf(nodes, indexes, labelSize, fileName);
+      const bytes = await buildProductsPdf(productsForPdf, labelSize);
+      downloadPdfBytes(bytes, fileName);
       setNotice(
         scope === "current"
-          ? "The visible product label was downloaded as a PDF."
+          ? "The visible product label was downloaded as a sharp vector PDF."
           : scope === "selected"
             ? `${indexes.length} selected product labels were downloaded.`
             : `The complete ${base} product-label file was downloaded.`,
@@ -989,22 +996,19 @@ export default function Home() {
     setActionMenu(null);
     setDownloading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const nodes = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-pdf-label]"),
-      );
       const indexes =
         scope === "current"
           ? [runLabelIndex]
           : scope === "selected"
             ? requestedIndexes
-            : nodes.map((_, i) => i);
+            : selectedRun.payload.map((_, i) => i);
       const base = selectedRun.sourceFile.replace(/\.[^.]+$/, "");
       const fileName = `${base}-${scope === "current" ? `label-${runLabelIndex + 1}` : scope === "selected" ? "selected-labels" : "whole-file"}.pdf`;
-      await downloadNativePdf(nodes, indexes, labelSize, fileName);
+      const bytes = await buildPackagingPdf(selectedRun, indexes, labelSize);
+      downloadPdfBytes(bytes, fileName);
       setNotice(
         scope === "current"
-          ? "The visible label was downloaded as a PDF."
+          ? "The visible label was downloaded as a sharp vector PDF."
           : scope === "selected"
             ? `${indexes.length} selected packaging labels were downloaded.`
             : `All ${selectedRun.labelCount} labels were downloaded as one PDF.`,
@@ -1095,15 +1099,9 @@ export default function Home() {
     setActionMenu(null);
     setDownloading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const nodes = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "[data-checked-product-pdf-label]",
-        ),
-      );
-      const indexes = nodes.map((_, i) => i);
       const fileName = `selected-eans-${checkedProducts.length}-labels.pdf`;
-      await downloadNativePdf(nodes, indexes, labelSize, fileName);
+      const bytes = await buildProductsPdf(checkedProducts, labelSize);
+      downloadPdfBytes(bytes, fileName);
       setNotice(
         `${checkedProducts.length} selected product labels were downloaded.`,
       );

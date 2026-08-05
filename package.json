@@ -16,6 +16,8 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "bwip-js": "^4.11.2",
     "drizzle-orm": "0.45.2",
     "html-to-image": "^1.11.13",
     "jsbarcode": "^3.12.3",

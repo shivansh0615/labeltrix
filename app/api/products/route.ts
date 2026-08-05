@@ -10,8 +10,8 @@ import {
 
 async function ensureSchema() {
   const db = getDb();
-  await db.run(sql`CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS products (
+    id SERIAL PRIMARY KEY,
     marketplace TEXT NOT NULL,
     ean TEXT NOT NULL,
     fsn TEXT NOT NULL,
@@ -23,16 +23,16 @@ async function ensureSchema() {
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
-  await db.run(
+  await db.execute(
     sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_products_marketplace_ean ON products(marketplace, ean)`,
   );
-  await db.run(
+  await db.execute(
     sql`CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean)`,
   );
-  await db.run(
+  await db.execute(
     sql`CREATE INDEX IF NOT EXISTS idx_products_fsn ON products(fsn)`,
   );
-  await db.run(
+  await db.execute(
     sql`CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)`,
   );
   return db;
