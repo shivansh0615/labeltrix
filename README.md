@@ -58,7 +58,7 @@ Tables are created automatically on first API use (`CREATE TABLE IF NOT EXISTS`)
 
 **Local:** put them in `.dev.vars` (not `.env`). Wrangler/vinext loads `.dev.vars` for `npm run dev`.
 
-**Production (APICloud / host):** set the same keys as secrets/env vars in the dashboard — at minimum `DATABASE_URL` after the Neon migration. Redeploy after changing secrets.
+**Production (Docker / Coolify / host):** set the same keys as **runtime** container secrets/env vars — at minimum `DATABASE_URL`. `npm start` writes them into `.dev.vars` so the Cloudflare Worker preview runtime can read them (container env alone is not enough). Redeploy/restart after changing secrets.
 
 Do not commit `.dev.vars` or real connection strings.
 
@@ -95,14 +95,36 @@ scripts/dev.mjs       Local dev (app + PDF helper)
 | `npm run lint` | ESLint |
 | `npm run db:generate` | Generate Drizzle migrations after schema edits |
 
-## Deploy notes
+## Deploy with Coolify
 
-1. Push code to your Git remote (GitLab / etc.).
-2. On the host, set `DATABASE_URL` (and auth secrets if not already set).
-3. Redeploy.
-4. Re-upload Excel masters once on the live URL if the Neon DB is new.
+This app ships a multi-stage [`Dockerfile`](Dockerfile). Use **Dockerfile** build (not Nixpacks / static).
 
-Local Neon data and production Neon data are the same only if both use the **same** `DATABASE_URL`.
+1. **Neon** — create a project and copy the connection string (`?sslmode=require`).
+2. **Git** — push this repo (including the `scripts/start.mjs` fix) to GitHub/GitLab.
+3. **Coolify** → New Resource → **Docker Compose** is not required; use **Dockerfile** / Git application.
+4. Settings that matter:
+   - **Build Pack:** Dockerfile  
+   - **Dockerfile location:** `Dockerfile` (repo root)  
+   - **Port:** `3000` (matches `EXPOSE` / `PORT`)  
+   - **Host:** leave default; app binds `0.0.0.0`
+5. **Environment variables** (Runtime — not Build-only):
+
+| Key | Example / notes |
+|-----|-----------------|
+| `DATABASE_URL` | `postgresql://…@….neon.tech/neondb?sslmode=require` — **required** |
+| `LABELTRIX_ADMIN_PASSWORD` | Admin login password |
+| `LABELTRIX_VIEWER_PASSWORD` | Viewer login password |
+| `LABELTRIX_AUTH_SECRET` | Long random string (session cookies) |
+| `PORT` | `3000` (optional; already default) |
+
+6. Deploy. In container logs you should see:
+   - `Wrote Worker secrets to .dev.vars for vite preview.`
+   - `Local: http://localhost:3000/`
+7. Open the Coolify URL → log in → upload product/packaging Excel once if the Neon DB is empty.
+
+If `/api/products` still returns 500, `DATABASE_URL` is missing from **runtime** env (or the container was not restarted after adding it).
+
+Local Neon and production Neon share data only when both use the **same** `DATABASE_URL`.
 
 ## Roles
 
