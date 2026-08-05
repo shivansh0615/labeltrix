@@ -17,7 +17,8 @@ ENV WRANGLER_WRITE_LOGS=false
 ENV WRANGLER_SEND_METRICS=false
 ENV MINIFLARE_REGISTRY_PATH=.wrangler/registry
 
-RUN npm run build
+# Ensure deploy dir exists even if the build tool skips creating it.
+RUN npm run build && mkdir -p .wrangler/deploy
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
@@ -34,7 +35,8 @@ ENV WRANGLER_WRITE_LOGS=false
 ENV WRANGLER_SEND_METRICS=false
 ENV MINIFLARE_REGISTRY_PATH=.wrangler/registry
 
-# Cloudflare Workers runtime (vite preview / workerd) needs config + build output
+# Cloudflare Workers runtime (vite preview / workerd) needs config + build output.
+# Secrets (DATABASE_URL, etc.) come from Coolify runtime env → scripts/start.mjs → .dev.vars
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

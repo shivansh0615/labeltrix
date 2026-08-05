@@ -20,10 +20,16 @@ const localBindingConfig = {
       process.env.LABELTRIX_VIEWER_PASSWORD || "Viewer@123",
     LABELTRIX_AUTH_SECRET:
       process.env.LABELTRIX_AUTH_SECRET || "labeltrix-dev-secret-change-me",
-    ...(process.env.DATABASE_URL
-      ? { DATABASE_URL: process.env.DATABASE_URL }
-      : {}),
+    ...((() => {
+      const raw =
+        process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "";
+      const trimmed = raw.trim().replace(/^["']|["']$/g, "");
+      return trimmed.startsWith("postgres")
+        ? { DATABASE_URL: trimmed }
+        : {};
+    })()),
   },
+
   d1_databases: d1
     ? [
         {

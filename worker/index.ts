@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DATABASE_URL?: string;
+  NEON_DATABASE_URL?: string;
   LABELTRIX_ADMIN_PASSWORD?: string;
   LABELTRIX_VIEWER_PASSWORD?: string;
   LABELTRIX_AUTH_SECRET?: string;
