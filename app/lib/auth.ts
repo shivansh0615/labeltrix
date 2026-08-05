@@ -21,34 +21,49 @@ const COOKIE_NAME = "labeltrix_session";
 const SESSION_DAYS = 14;
 const SESSION_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
 
-const DEV_DEFAULTS = {
-  adminPassword: "Kharesiya$$9911",
-  viewerPassword: "Viewer@123",
-  secret: "labeltrix-dev-secret-change-me",
-} as const;
-
 type AuthEnv = {
   LABELTRIX_ADMIN_PASSWORD?: string;
   LABELTRIX_VIEWER_PASSWORD?: string;
   LABELTRIX_AUTH_SECRET?: string;
 };
 
+/** Normalize host/dashboard secrets: trim, strip wrapping quotes. */
+function readSecret(...values: Array<string | undefined>): string {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    let next = value.trim();
+    if (
+      (next.startsWith('"') && next.endsWith('"')) ||
+      (next.startsWith("'") && next.endsWith("'"))
+    ) {
+      next = next.slice(1, -1).trim();
+    }
+    if (next) return next;
+  }
+  return "";
+}
+
 function authConfig() {
   const workerEnv = env as AuthEnv;
-  return {
-    adminPassword:
-      workerEnv.LABELTRIX_ADMIN_PASSWORD ||
-      process.env.LABELTRIX_ADMIN_PASSWORD ||
-      DEV_DEFAULTS.adminPassword,
-    viewerPassword:
-      workerEnv.LABELTRIX_VIEWER_PASSWORD ||
-      process.env.LABELTRIX_VIEWER_PASSWORD ||
-      DEV_DEFAULTS.viewerPassword,
-    secret:
-      workerEnv.LABELTRIX_AUTH_SECRET ||
-      process.env.LABELTRIX_AUTH_SECRET ||
-      DEV_DEFAULTS.secret,
-  };
+  const adminPassword = readSecret(
+    workerEnv.LABELTRIX_ADMIN_PASSWORD,
+    process.env.LABELTRIX_ADMIN_PASSWORD,
+  );
+  const viewerPassword = readSecret(
+    workerEnv.LABELTRIX_VIEWER_PASSWORD,
+    process.env.LABELTRIX_VIEWER_PASSWORD,
+  );
+  const secret = readSecret(
+    workerEnv.LABELTRIX_AUTH_SECRET,
+    process.env.LABELTRIX_AUTH_SECRET,
+  );
+  if (!adminPassword || !viewerPassword || !secret) {
+    throw new AuthError(
+      "Auth secrets are not configured. Set LABELTRIX_ADMIN_PASSWORD, LABELTRIX_VIEWER_PASSWORD, and LABELTRIX_AUTH_SECRET in .dev.vars (local) or host secrets (production).",
+      500,
+    );
+  }
+  return { adminPassword, viewerPassword, secret };
 }
 
 function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {

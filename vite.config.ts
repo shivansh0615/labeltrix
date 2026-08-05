@@ -12,14 +12,8 @@ const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   vars: {
-    // Used by `vite dev`. `vite preview` / Docker also need `.dev.vars`
-    // (see scripts/start.mjs) because preview skips re-applying this config.
-    LABELTRIX_ADMIN_PASSWORD:
-      process.env.LABELTRIX_ADMIN_PASSWORD || "Kharesiya$$9911",
-    LABELTRIX_VIEWER_PASSWORD:
-      process.env.LABELTRIX_VIEWER_PASSWORD || "Viewer@123",
-    LABELTRIX_AUTH_SECRET:
-      process.env.LABELTRIX_AUTH_SECRET || "labeltrix-dev-secret-change-me",
+    // Auth secrets: .dev.vars / host secrets only (no hardcoded passwords).
+    // DATABASE_URL: pass through from environment when present (Coolify/runtime).
     ...((() => {
       const raw =
         process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "";
