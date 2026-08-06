@@ -4,9 +4,20 @@ import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import JsBarcode from "jsbarcode";
 import {
+  applyPreviousMonthManufactureDate,
   buildPackagingPdf,
   buildProductsPdf,
+  clampLabelSize,
+  computeSmartLabelLayoutPx,
+  defaultBarcodeSource,
   downloadPdfBytes,
+  isManufactureDateKey,
+  labelSizeCssInches,
+  labelSizesForMarketplace,
+  previousMonthManufactureLabel,
+  resolveProductBarcode,
+  type BarcodeSource,
+  type LabelSize,
 } from "./lib/vector-label-pdf";
 
 type Product = {
@@ -45,9 +56,29 @@ type AuthRole = "admin" | "viewer";
 function productKey(product: Product) {
   return `${product.marketplace}|${product.ean}`;
 }
+/** Collapse Excel header whitespace (incl. \\r\\n) for alias matching. */
+function normalizeHeader(key: string) {
+  return key.replace(/\s+/g, " ").trim().toLowerCase();
+}
 function value(row: Record<string, unknown>, ...keys: string[]) {
-  for (const key of keys)
-    if (row[key] !== undefined && row[key] !== null) return String(row[key]);
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null) {
+      const text = String(row[key]);
+      if (text.trim() !== "") return text;
+    }
+  }
+  const entries = Object.entries(row);
+  for (const key of keys) {
+    const want = normalizeHeader(key);
+    const hit = entries.find(
+      ([k, v]) =>
+        normalizeHeader(k) === want &&
+        v !== undefined &&
+        v !== null &&
+        String(v).trim() !== "",
+    );
+    if (hit) return String(hit[1]);
+  }
   return "";
 }
 function excelDate(v: unknown) {
@@ -61,6 +92,28 @@ function excelDate(v: unknown) {
       timeZone: "UTC",
     })
     .replace(" ", "-");
+}
+
+function applyExcelDates(
+  payload: Record<string, unknown>,
+  dateKeys: string[],
+) {
+  const want = new Set(dateKeys.map(normalizeHeader));
+  for (const key of Object.keys(payload)) {
+    if (want.has(normalizeHeader(key))) {
+      payload[key] = excelDate(payload[key]);
+    }
+  }
+}
+
+function isFbfProductRow(row: Record<string, unknown>) {
+  return (
+    "Category" in row ||
+    "model_name" in row ||
+    "Model_name" in row ||
+    "model_number" in row ||
+    "Model_number" in row
+  );
 }
 
 function parseLabelNumbers(input: string, total: number) {
@@ -104,28 +157,63 @@ function readRows(wb: XLSX.WorkBook, name: string) {
     raw: true,
   });
 }
+
+/** Product masters: data lives on sheet 1 only. Sheet 2 is a visual label mock — never read. */
+function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
+  const names = wb.SheetNames;
+  if (names.includes("Product Details")) return "Product Details";
+  // First sheet only if it looks like a product master (has EAN/FSN columns).
+  const first = names[0];
+  if (!first || !wb.Sheets[first]) return null;
+  const sample = readRows(wb, first).slice(0, 5);
+  if (!sample.length) return null;
+  const looksProduct = sample.some(
+    (row) =>
+      value(row, "EAN", "Ean", "ean") && value(row, "FSN", "Fsn", "fsn"),
+  );
+  return looksProduct ? first : null;
+}
+
 function parseUpload(file: File, bytes: ArrayBuffer) {
   const wb = XLSX.read(bytes, { type: "array", cellDates: false, raw: true });
   const names = wb.SheetNames;
-  if (
-    names.includes("Product Details") &&
-    names.includes("Product Label Format")
-  ) {
-    const rows = readRows(wb, "Product Details");
-    const fbf = rows.some((r) => "model_name" in r || "Category" in r);
+  const productSheet = findProductDetailsSheet(wb);
+  if (productSheet) {
+    // Ignore any later sheets (e.g. "Product Label Format") — reference layout only.
+    const rows = readRows(wb, productSheet);
+    const fbf = rows.some(isFbfProductRow);
     const products = rows
       .map((r) => {
         const payload = { ...r };
-        const dateKey = fbf
-          ? "month and year of manufactured"
-          : "Date Of Manufacture ";
-        if (dateKey in payload) payload[dateKey] = excelDate(payload[dateKey]);
+        applyExcelDates(
+          payload,
+          fbf
+            ? [
+                "Month and year of manufactured",
+                "month and year of manufactured",
+              ]
+            : ["Date Of Manufacture "],
+        );
+        applyPreviousMonthManufactureDate(payload, fbf ? "FBF" : "Alpha");
         return {
           marketplace: fbf ? "FBF" : "Alpha",
           ean: value(r, "EAN", "Ean", "ean"),
           fsn: value(r, "FSN", "Fsn", "fsn"),
-          sku: value(r, "model_number", "Style Code", "SKU", "SKU Id"),
-          title: value(r, "model_name", "Brand ", "Product Title"),
+          sku: value(
+            r,
+            "Model_number",
+            "model_number",
+            "Style Code",
+            "SKU",
+            "SKU Id",
+          ),
+          title: value(
+            r,
+            "Model_name",
+            "model_name",
+            "Brand ",
+            "Product Title",
+          ),
           brand: value(r, "brand", "Brand "),
           payload,
           sourceFile: file.name,
@@ -135,8 +223,9 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
     return {
       kind: "product" as const,
       marketplace: fbf ? "FBF" : "Alpha",
-      sourceSheet: "Product Details",
-      formatSheet: "Product Label Format",
+      sourceSheet: productSheet,
+      // Sheet 2 is visual reference only — not used for data.
+      formatSheet: "Product Details (data sheet)",
       products,
     };
   }
@@ -190,7 +279,7 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
     };
   }
   throw new Error(
-    "Workbook type not recognised. It must contain one of the four approved source + format sheet pairs.",
+    "Workbook type not recognised. Product masters need a Product Details (1st) sheet with EAN and FSN. Packaging lists need Packaging List + Label Format, or FBF Packaging List + Box Label Format.",
   );
 }
 
@@ -208,9 +297,9 @@ function Barcode({
       JsBarcode(canvas, value, {
         format,
         displayValue: false,
-        margin: 9,
-        height: 144,
-        width: format === "EAN13" ? 6.15 : 2.4,
+        margin: 4,
+        height: format === "EAN13" ? 180 : 144,
+        width: format === "EAN13" ? 9.5 : 2.4,
         fontSize: 14,
         background: "#ffffff",
       });
@@ -232,94 +321,197 @@ function Barcode({
     </div>
   );
 }
-const alphaFields = [
-  "Date Of Manufacture ",
-  "Brand ",
-  "Type",
-  "Size",
-  "Material",
-  "Color",
-  "Style Code",
-  "Brand Colour",
-  "Net Quantity",
-  "1 U Contains",
-  "Dimensions or Size",
-  "MRP",
-  "Country Of Origin",
+const alphaFields: Array<{ label: string; keys: string[] }> = [
+  { label: "Date Of Manufacture", keys: ["Date Of Manufacture "] },
+  { label: "Brand", keys: ["Brand "] },
+  { label: "Type", keys: ["Type"] },
+  { label: "Size", keys: ["Size"] },
+  { label: "Material", keys: ["Material"] },
+  { label: "Color", keys: ["Color"] },
+  { label: "Style Code", keys: ["Style Code"] },
+  { label: "Brand Colour", keys: ["Brand Colour"] },
+  { label: "Net Quantity", keys: ["Net Quantity"] },
+  { label: "1 U Contains", keys: ["1 U Contains"] },
+  { label: "Dimensions", keys: ["Dimensions", "Dimensions or Size"] },
+  { label: "MRP", keys: ["MRP"] },
+  { label: "Country Of Origin", keys: ["Country Of Origin"] },
 ];
-const fbfFields = [
-  "brand",
-  "FSN",
-  "model_name",
-  "model_number",
-  "color",
-  "EAN",
-  "type",
-  "size",
-  "Net quantity",
-  "Generic name",
-  "Dimension",
-  "MRP",
-  "month and year of manufactured",
+const fbfFields: Array<{ label: string; keys: string[] }> = [
+  { label: "brand", keys: ["brand"] },
+  { label: "FSN", keys: ["FSN"] },
+  { label: "model_name", keys: ["Model_name", "model_name"] },
+  { label: "model_number", keys: ["Model_number", "model_number"] },
+  { label: "color", keys: ["Color", "color"] },
+  { label: "EAN", keys: ["EAN", "Ean"] },
+  { label: "type", keys: ["Type", "type"] },
+  { label: "size", keys: ["Size", "size"] },
+  { label: "Net quantity", keys: ["Net quantity"] },
+  { label: "Generic name", keys: ["Generic name"] },
+  { label: "Dimension", keys: ["Dimension"] },
+  { label: "MRP", keys: ["MRP"] },
+  {
+    label: "month and year of manufactured",
+    keys: [
+      "Month and year of manufactured",
+      "month and year of manufactured",
+    ],
+  },
 ];
-function ProductLabel({ product }: { product: Product }) {
+
+const FBF_COMPANY_KEYS = [
+  "Manufactured & Marketed by &\r\n Customer Care Details",
+  "Manufactured & Marketed by & Customer Care Details",
+  "manufactured by/Marketed by & customer care details",
+];
+
+function alphaAddressLines(d: Record<string, unknown>) {
+  const combined = value(d, "Marketed & Manufactured By");
+  if (combined) return { label: "Marketed & Manufactured By", text: combined };
+  const marketed = value(d, "Marketed By / Imported By");
+  const manufactured = value(d, "Manufactured By ") || "—";
+  return {
+    label: "Marketed By / Imported By\nManufactured By",
+    text: `${marketed}\n${manufactured}`,
+  };
+}
+
+function alphaCareText(d: Record<string, unknown>) {
+  const combined = value(d, "Customer Care Details");
+  if (combined) return combined;
+  return [
+    value(d, "For Consumer Complaints"),
+    value(d, "Customer Care Address", "__EMPTY"),
+    value(d, "Customer Care Email", "__EMPTY_1"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function fbfCompanyText(d: Record<string, unknown>) {
+  const combined = value(d, ...FBF_COMPANY_KEYS);
+  if (combined) {
+    const mobile = value(d, "Mobile");
+    const email = value(d, "Email");
+    return [combined, mobile, email].filter(Boolean).join("\n");
+  }
+  return [
+    value(d, "manufactured by/Marketed by & customer care details"),
+    value(d, "Mobile"),
+    value(d, "Email"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function ProductLabel({
+  product,
+  labelSize = "3x5",
+  barcodeSource = "EAN",
+}: {
+  product: Product;
+  labelSize?: LabelSize;
+  barcodeSource?: BarcodeSource;
+}) {
   const d = product.payload;
-  if (product.marketplace === "Alpha")
+  const barcode = resolveProductBarcode(product, barcodeSource);
+  const layout = computeSmartLabelLayoutPx(product.marketplace, labelSize, {
+    fsn: product.fsn,
+    payload: d,
+  });
+  const rh = (px: number) => ({
+    ["--rh" as string]: `${Math.max(4, px)}px`,
+  });
+
+  if (product.marketplace === "Alpha") {
+    const address = alphaAddressLines(d);
+    const care = alphaCareText(d);
     return (
-      <div className="label alphaLabel">
-        <div className="labelTitle">{product.fsn}</div>
-        <div className="labelRow addressRow">
+      <div className="label alphaLabel smartLayout">
+        <div className="labelTitle" style={rh(layout.title)}>
+          {product.fsn}
+        </div>
+        <div className="labelRow addressRow" style={rh(layout.special[0])}>
           <strong>
-            Marketed By / Imported By
-            <br />
-            Manufactured By
+            {address.label.split("\n").map((line, i) => (
+              <span key={`${line}-${i}`}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
           </strong>
           <span>
-            {value(d, "Marketed By / Imported By")}
-            <br />
-            {value(d, "Manufactured By ") || "—"}
+            {address.text.split("\n").map((line, i) => (
+              <span key={`${line}-${i}`}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
           </span>
         </div>
-        {alphaFields.map((k) => (
-          <div className="labelRow" key={k}>
-            <strong>{k.trim()}</strong>
-            <span>{value(d, k)}</span>
+        {alphaFields.map((field, i) => (
+          <div className="labelRow" key={field.label} style={rh(layout.fields[i])}>
+            <strong>{field.label}</strong>
+            <span>
+              {field.keys.some(isManufactureDateKey)
+                ? previousMonthManufactureLabel()
+                : value(d, ...field.keys)}
+            </span>
           </div>
         ))}
-        <div className="labelRow complaints">
-          <strong>For Consumer Complaints</strong>
+        <div className="labelRow complaints" style={rh(layout.special[1])}>
+          <strong>
+            {value(d, "Customer Care Details")
+              ? "Customer Care Details"
+              : "For Consumer Complaints"}
+          </strong>
           <span>
-            {value(d, "For Consumer Complaints")}
-            <br />
-            {value(d, "Customer Care Address")}
-            <br />
-            {value(d, "Customer Care Email")}
+            {care.split("\n").map((line, i) => (
+              <span key={`${line}-${i}`}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
           </span>
         </div>
-        <Barcode value={product.ean} format="EAN13" />
+        <div className="barcodeTitle" aria-hidden="true" />
+        <div className="smartBarcode" style={rh(layout.barcode)}>
+          <Barcode value={barcode.value} format={barcode.format} />
+        </div>
       </div>
     );
+  }
   return (
-    <div className="label fbfLabel">
-      <div className="labelTitle">{value(d, "Category")}</div>
-      {fbfFields.map((k) => (
-        <div className="labelRow" key={k}>
-          <strong>{k}</strong>
-          <span>{value(d, k)}</span>
+    <div className="label fbfLabel smartLayout">
+      <div className="labelTitle" style={rh(layout.title)}>
+        {value(d, "Category")}
+      </div>
+      {fbfFields.map((field, i) => (
+        <div className="labelRow" key={field.label} style={rh(layout.fields[i])}>
+          <strong>{field.label}</strong>
+          <span>
+            {field.keys.some(isManufactureDateKey)
+              ? previousMonthManufactureLabel()
+              : value(d, ...field.keys)}
+          </span>
         </div>
       ))}
-      <div className="labelRow company">
+      <div className="labelRow company" style={rh(layout.special[0])}>
         <strong>manufactured by/Marketed by &amp; customer care details</strong>
         <span>
-          {value(d, "manufactured by/Marketed by & customer care details")}
-          <br />
-          {value(d, "Mobile")}
-          <br />
-          {value(d, "Email")}
+          {fbfCompanyText(d)
+            .split("\n")
+            .map((line, i) => (
+              <span key={`${line}-${i}`}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
         </span>
       </div>
       <div className="barcodeTitle" aria-hidden="true" />
-      <Barcode value={product.fsn} format="CODE128" />
+      <div className="smartBarcode" style={rh(layout.barcode)}>
+        <Barcode value={barcode.value} format={barcode.format} />
+      </div>
     </div>
   );
 }
@@ -406,11 +598,16 @@ async function waitForLabelAssets(nodes: HTMLElement[]) {
   );
 }
 
-const PDF_PAGE_SIZES = {
-  "3x5": { widthPoints: 216, heightPoints: 360 },
-  "3x4": { widthPoints: 216, heightPoints: 288 },
+const PDF_PAGE_SIZES: Record<
+  LabelSize,
+  { widthPoints: number; heightPoints: number }
+> = {
+  "2x2": { widthPoints: 144, heightPoints: 144 },
+  "2x3": { widthPoints: 144, heightPoints: 216 },
   "3x3": { widthPoints: 216, heightPoints: 216 },
-} as const;
+  "3x4": { widthPoints: 216, heightPoints: 288 },
+  "3x5": { widthPoints: 216, heightPoints: 360 },
+};
 
 async function isNativePdfServiceReady() {
   try {
@@ -470,7 +667,7 @@ function triggerPdfDownload(bytes: Uint8Array, fileName: string) {
 async function downloadPdfViaChromium(
   nodes: HTMLElement[],
   indexes: number[],
-  labelSize: "3x5" | "3x4" | "3x3",
+  labelSize: LabelSize,
   fileName: string,
 ) {
   const chunkSize = 40;
@@ -507,7 +704,7 @@ async function downloadPdfViaChromium(
 async function downloadPdfViaBrowser(
   nodes: HTMLElement[],
   indexes: number[],
-  labelSize: "3x5" | "3x4" | "3x3",
+  labelSize: LabelSize,
   fileName: string,
 ) {
   const chosenNodes = indexes.map((index) => nodes[index]);
@@ -570,9 +767,9 @@ async function downloadPdfViaBrowser(
 function nativePdfDocument(
   nodes: HTMLElement[],
   indexes: number[],
-  labelSize: "3x5" | "3x4" | "3x3",
+  labelSize: LabelSize,
 ) {
-  const pageHeight = labelSize === "3x5" ? 5 : labelSize === "3x4" ? 4 : 3;
+  const dims = labelSizeCssInches(labelSize);
   const chosenNodes = indexes.map((index) => nodes[index]);
   if (!chosenNodes.length || chosenNodes.some((node) => !node)) {
     throw new Error("One or more selected labels could not be found.");
@@ -603,9 +800,9 @@ function nativePdfDocument(
     <meta charset="utf-8">
     <base href="${escapeHtmlAttribute(document.baseURI)}">
     <style>${activeCss}
-      @page { size: 3in ${pageHeight}in; margin: 0; }
+      @page { size: ${dims.width} ${dims.height}; margin: 0; }
       html, body {
-        width: 3in;
+        width: ${dims.width};
         margin: 0;
         padding: 0;
         overflow: visible;
@@ -614,10 +811,10 @@ function nativePdfDocument(
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .nativePdfPage {
         box-sizing: border-box;
-        width: 3in;
-        height: ${pageHeight}in;
-        min-height: ${pageHeight}in;
-        max-height: ${pageHeight}in;
+        width: ${dims.width};
+        height: ${dims.height};
+        min-height: ${dims.height};
+        max-height: ${dims.height};
         margin: 0;
         padding: 0;
         overflow: hidden;
@@ -691,7 +888,7 @@ function nativePdfDocument(
 async function downloadNativePdf(
   nodes: HTMLElement[],
   indexes: number[],
-  labelSize: "3x5" | "3x4" | "3x3",
+  labelSize: LabelSize,
   fileName: string,
 ) {
   const chosenNodes = indexes.map((index) => nodes[index]);
@@ -744,7 +941,8 @@ export default function Home() {
     "download" | "print" | "product-download" | "product-print" | null
   >(null);
   const [downloading, setDownloading] = useState(false);
-  const [labelSize, setLabelSize] = useState<"3x5" | "3x4" | "3x3">("3x5");
+  const [labelSize, setLabelSize] = useState<LabelSize>("3x5");
+  const [barcodeSource, setBarcodeSource] = useState<BarcodeSource>("EAN");
   const [selectionDialog, setSelectionDialog] = useState<
     "product" | "packaging" | null
   >(null);
@@ -876,7 +1074,7 @@ export default function Home() {
       setNotice("Viewer access cannot upload workbooks.");
       return;
     }
-    setNotice("Reading both the source and format sheets...");
+    setNotice("Reading workbook...");
     try {
       const parsed = parseUpload(file, await file.arrayBuffer());
       if (parsed.kind === "product") {
@@ -890,11 +1088,14 @@ export default function Home() {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
         setNotice(
-          `${j.saved} ${parsed.marketplace} Product Master records saved. Format detected: ${parsed.formatSheet}.`,
+          `${j.saved} ${parsed.marketplace} Product Master records saved from ${parsed.sourceSheet} (2nd sheet ignored — label reference only).`,
         );
         await loadProducts();
         setSelected(parsed.products[0]);
         setMarketplaceFilter(parsed.marketplace as "Alpha" | "FBF");
+        setLabelSize((prev) =>
+          clampLabelSize(prev, parsed.marketplace as "Alpha" | "FBF"),
+        );
         setTab("master");
       } else {
         const r = await fetch("/api/packaging", {
@@ -911,6 +1112,9 @@ export default function Home() {
         setSelectedRun(j.run);
         setRunLabelIndex(0);
         setMarketplaceFilter(parsed.marketplace as "Alpha" | "FBF");
+        setLabelSize((prev) =>
+          clampLabelSize(prev, parsed.marketplace as "Alpha" | "FBF"),
+        );
         setTab("packaging");
       }
     } catch (e) {
@@ -965,7 +1169,11 @@ export default function Home() {
         "",
       );
       const fileName = `${base}-${scope === "current" ? `EAN-${selected.ean}` : scope === "selected" ? "selected-labels" : "whole-file"}.pdf`;
-      const bytes = await buildProductsPdf(productsForPdf, labelSize);
+      const bytes = await buildProductsPdf(
+        productsForPdf,
+        labelSize,
+        barcodeSource,
+      );
       downloadPdfBytes(bytes, fileName);
       setNotice(
         scope === "current"
@@ -1077,6 +1285,8 @@ export default function Home() {
   );
   function chooseMarketplace(marketplace: "Alpha" | "FBF") {
     setMarketplaceFilter(marketplace);
+    setLabelSize((prev) => clampLabelSize(prev, marketplace));
+    setBarcodeSource(defaultBarcodeSource(marketplace));
     setCheckedKeys([]);
     if (tab === "master") {
       setSelected(
@@ -1091,6 +1301,12 @@ export default function Home() {
       setRunLabelIndex(0);
     }
   }
+
+  // Keep size dropdown in sync when marketplace filter changes.
+  useEffect(() => {
+    setLabelSize((prev) => clampLabelSize(prev, marketplaceFilter));
+    setBarcodeSource(defaultBarcodeSource(marketplaceFilter));
+  }, [marketplaceFilter]);
   async function downloadCheckedProducts() {
     if (!checkedProducts.length) {
       setNotice("Select one or more products from the list first.");
@@ -1100,7 +1316,11 @@ export default function Home() {
     setDownloading(true);
     try {
       const fileName = `selected-eans-${checkedProducts.length}-labels.pdf`;
-      const bytes = await buildProductsPdf(checkedProducts, labelSize);
+      const bytes = await buildProductsPdf(
+        checkedProducts,
+        labelSize,
+        barcodeSource,
+      );
       downloadPdfBytes(bytes, fileName);
       setNotice(
         `${checkedProducts.length} selected product labels were downloaded.`,
@@ -1213,7 +1433,7 @@ export default function Home() {
   }
   return (
     <main className={`size-${labelSize}`}>
-      <style>{`@media print { @page { size: 3in ${labelSize === "3x5" ? "5in" : labelSize === "3x4" ? "4in" : "3in"}; margin: 0; } }`}</style>
+      <style>{`@media print { @page { size: ${labelSizeCssInches(labelSize).width} ${labelSizeCssInches(labelSize).height}; margin: 0; } }`}</style>
       {!authReady ? (
         <div className="authBoot">
           <span className="brandMark">LT</span>
@@ -1635,7 +1855,7 @@ export default function Home() {
                       <h2>{selected.title || selected.fsn}</h2>
                       <p>
                         Source: {selected.sourceFile || "Product Master"} |
-                        Format: Product Label Format
+                        Data: Product Details (sheet 1)
                       </p>
                     </div>
                     <label className="detailSizeSelect">
@@ -1643,15 +1863,30 @@ export default function Home() {
                       <select
                         value={labelSize}
                         onChange={(event) =>
-                          setLabelSize(
-                            event.target.value as "3x5" | "3x4" | "3x3",
-                          )
+                          setLabelSize(event.target.value as LabelSize)
                         }
                         aria-label="Choose label size"
                       >
-                        <option value="3x5">3 × 5 in</option>
-                        <option value="3x4">3 × 4 in</option>
-                        <option value="3x3">3 × 3 in</option>
+                        {labelSizesForMarketplace(marketplaceFilter).map(
+                          (size) => (
+                          <option key={size} value={size}>
+                            {size.replace("x", " × ")} in
+                          </option>
+                        ),
+                        )}
+                      </select>
+                    </label>
+                    <label className="detailSizeSelect">
+                      <span>Barcode from</span>
+                      <select
+                        value={barcodeSource}
+                        onChange={(event) =>
+                          setBarcodeSource(event.target.value as BarcodeSource)
+                        }
+                        aria-label="Choose barcode source"
+                      >
+                        <option value="EAN">EAN</option>
+                        <option value="FSN">FSN</option>
                       </select>
                     </label>
                     <div className="actionMenus">
@@ -1715,6 +1950,12 @@ export default function Home() {
                         )}
                       </div>
                     </div>
+                    <p className="gummingPrintTip">
+                      Gumming printer: use <strong>Download PDF</strong>, set
+                      paper to the same label size ({labelSize.replace("x", " × ")}{" "}
+                      in), and print at <strong>Actual size / 100%</strong> — never
+                      Fit or Shrink to page.
+                    </p>
                   </div>
                   <div className="detailGrid">
                     <section className="record">
@@ -1730,14 +1971,16 @@ export default function Home() {
                     </section>
                     <section className="preview">
                       <div className="previewHead">
-                        <h3>Product Label Format</h3>
+                        <h3>Product label preview</h3>
                         <span>
-                          {selected.marketplace === "FBF"
-                            ? "Barcode from FSN"
-                            : "Barcode from EAN"}
+                          Barcode from {barcodeSource}
                         </span>
                       </div>
-                      <ProductLabel product={selected} />
+                      <ProductLabel
+                        product={selected}
+                        labelSize={labelSize}
+                        barcodeSource={barcodeSource}
+                      />
                     </section>
                   </div>
                   {productPrintScope && (
@@ -1750,7 +1993,11 @@ export default function Home() {
                           className="productPrintPage"
                           key={`${product.marketplace}-${product.ean}`}
                         >
-                          <ProductLabel product={product} />
+                          <ProductLabel
+                            product={product}
+                            labelSize={labelSize}
+                            barcodeSource={barcodeSource}
+                          />
                         </div>
                       ))}
                     </div>
@@ -1762,7 +2009,11 @@ export default function Home() {
                         data-product-pdf-label
                         key={`${product.marketplace}-${product.ean}`}
                       >
-                        <ProductLabel product={product} />
+                        <ProductLabel
+                            product={product}
+                            labelSize={labelSize}
+                            barcodeSource={barcodeSource}
+                          />
                       </div>
                     ))}
                   </div>
@@ -1782,7 +2033,11 @@ export default function Home() {
                       data-checked-product-pdf-label
                       key={`checked-${product.marketplace}-${product.ean}`}
                     >
-                      <ProductLabel product={product} />
+                      <ProductLabel
+                            product={product}
+                            labelSize={labelSize}
+                            barcodeSource={barcodeSource}
+                          />
                     </div>
                   ))}
                 </div>
@@ -1862,15 +2117,17 @@ export default function Home() {
                       <select
                         value={labelSize}
                         onChange={(event) =>
-                          setLabelSize(
-                            event.target.value as "3x5" | "3x4" | "3x3",
-                          )
+                          setLabelSize(event.target.value as LabelSize)
                         }
                         aria-label="Choose label size"
                       >
-                        <option value="3x5">3 × 5 in</option>
-                        <option value="3x4">3 × 4 in</option>
-                        <option value="3x3">3 × 3 in</option>
+                        {labelSizesForMarketplace(marketplaceFilter).map(
+                          (size) => (
+                          <option key={size} value={size}>
+                            {size.replace("x", " × ")} in
+                          </option>
+                        ),
+                        )}
                       </select>
                     </label>
                     <div className="actionMenus">

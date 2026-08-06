@@ -412,6 +412,20 @@ article {
   color: var(--muted);
   font-size: 12px;
 }
+.gummingPrintTip {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  max-width: 52rem;
+  border: 1px solid #d9dee8;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.gummingPrintTip strong {
+  font-weight: 600;
+  color: #0f172a;
+}
 .detailGrid {
   display: grid;
   grid-template-columns: minmax(270px, 1fr) minmax(340px, 1.15fr);
@@ -461,13 +475,13 @@ article {
   margin: 16px auto 0;
   background: #fff;
   color: #000;
-  border: 2px solid #000;
+  border: 0.75pt solid #000;
   box-sizing: border-box;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Helvetica, Arial, sans-serif;
   font-weight: 400;
   box-shadow: 0 8px 24px #1c29451a;
   overflow: hidden;
-  /* Keep counters open on thermal printers — bold + antialias fills letter holes. */
+  /* Match Terry Blue printed sticker: regular weight only, open counters. */
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: unset;
   font-smooth: never;
@@ -479,33 +493,49 @@ article {
 .fbfLabel {
   width: 350px;
 }
+.size-2x2 .alphaLabel,
+.size-2x2 .fbfLabel,
+.size-2x3 .alphaLabel,
+.size-2x3 .fbfLabel,
+.size-3x3 .alphaLabel,
+.size-3x3 .fbfLabel,
+.size-3x4 .alphaLabel,
+.size-3x4 .fbfLabel,
+.size-3x5 .alphaLabel,
+.size-3x5 .fbfLabel {
+  width: var(--physical-label-width);
+}
 .labelTitle,
 .barcodeTitle {
   text-align: center;
-  font-weight: 600;
-  border-bottom: 1px solid #000;
+  font-weight: 400;
+  border-bottom: 0.5pt solid #000;
   padding: 4px;
-  font-size: 12px;
-  letter-spacing: 0.15px;
+  font-size: 7pt;
+  letter-spacing: 0;
 }
 .labelRow {
   display: grid;
-  grid-template-columns: 36% 64%;
-  border-bottom: 1px solid #000;
-  font-size: 8px;
-  line-height: 1.15;
+  grid-template-columns: 36.3% 63.7%;
+  border-bottom: 0.5pt solid #000;
+  font-size: 7pt;
+  line-height: 1.12;
+  font-weight: 400;
+  align-items: start;
 }
 .fbfLabel .labelRow {
-  grid-template-columns: 40% 60%;
+  grid-template-columns: 36.3% 63.7%;
   text-align: left;
 }
 .labelRow strong,
 .labelRow span {
-  padding: 3px 4px;
+  padding: 2px 3px;
   overflow-wrap: anywhere;
+  font-weight: 400;
 }
 .labelRow strong {
-  border-right: 1px solid #000;
+  border-right: 0.5pt solid #000;
+  font-weight: 400;
 }
 .complaints {
   min-height: 47px;
@@ -527,6 +557,11 @@ article {
 .fbfLabel .barcodeBox {
   height: 94px;
 }
+.size-2x2 .fbfLabel .barcodeBox {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+}
 .barcodeBox svg {
   display: block;
   flex: 1 1 auto;
@@ -538,9 +573,9 @@ article {
 .barcodeNumber {
   flex: 0 0 auto;
   color: #000;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 12px;
-  font-weight: 600;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  font-weight: 400;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
@@ -1128,14 +1163,14 @@ article {
 }
 .size-3x4 .labelRow strong,
 .size-3x3 .labelRow strong {
-  font-weight: 500;
-  letter-spacing: 0.12px;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 .size-3x4 .labelRow span,
 .size-3x3 .labelRow span {
   color: #000;
   font-weight: 400;
-  letter-spacing: 0.08px;
+  letter-spacing: 0;
 }
 
 .tabs {
@@ -2699,6 +2734,14 @@ input:focus-visible {
 }
 
 /* Physical label sizes shared by every template and every output path. */
+.size-2x2 {
+  --physical-label-width: 2in;
+  --physical-label-height: 2in;
+}
+.size-2x3 {
+  --physical-label-width: 2in;
+  --physical-label-height: 3in;
+}
 .size-3x4 {
   --physical-label-width: 3in;
   --physical-label-height: 4in;
@@ -2707,6 +2750,10 @@ input:focus-visible {
   --physical-label-width: 3in;
   --physical-label-height: 3in;
 }
+.size-2x2 .label,
+.size-2x2 .packLabel,
+.size-2x3 .label,
+.size-2x3 .packLabel,
 .size-3x4 .label,
 .size-3x4 .packLabel,
 .size-3x3 .label,
@@ -3088,23 +3135,197 @@ input:focus-visible {
 
 .size-3x4 .label > .barcodeBox {
   flex: 0 0 auto;
-  min-height: 90px;
-  height: 90px;
+  min-height: 100px;
+  height: 100px;
+  overflow: visible;
+  padding-bottom: 6px;
+  box-sizing: border-box;
 }
 
 .size-3x4 .barcodeBox .barcodeImage {
-  width: 96% !important;
-  height: 64px !important;
+  width: 92% !important;
+  height: 68px !important;
   max-width: 100%;
   max-height: none;
-  /* Stretch to the box — contain kept the PNG tiny with empty side gaps. */
   object-fit: fill !important;
 }
 
+.size-3x4 .alphaLabel .barcodeBox .barcodeImage {
+  width: 92% !important;
+  height: 70px !important;
+}
+
 .size-3x4 .barcodeNumber {
-  bottom: 2px;
-  font-size: 13px;
-  line-height: 14px;
+  bottom: 5px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  line-height: 18px !important;
+  font-size: 11pt;
+  font-weight: 400;
+}
+
+.size-3x4 .alphaLabel .barcodeNumber {
+  bottom: 6px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  line-height: 20px !important;
+  font-size: 12pt;
+  letter-spacing: 0.4px;
+}
+
+/* Compact 2×2 / 2×3 / 3×3 previews — Helvetica regular, fit all rows. */
+.size-2x2 .label,
+.size-2x3 .label,
+.size-3x3 .label {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 400;
+}
+.size-2x2 .labelTitle,
+.size-2x2 .labelRow,
+.size-2x3 .labelTitle,
+.size-2x3 .labelRow,
+.size-3x3 .labelTitle,
+.size-3x3 .labelRow {
+  font-weight: 400;
+}
+.size-2x2 .label,
+.size-2x2 .fbfLabel,
+.size-2x2 .alphaLabel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.size-2x2 .labelTitle {
+  flex: 0 0 auto;
+  font-size: 5pt;
+  padding: 1px 2px;
+  min-height: 10px;
+  height: auto;
+}
+.size-2x2 .labelRow {
+  flex: 1 1 0;
+  min-height: 0;
+  font-size: 4pt;
+  line-height: 1.02;
+  align-items: stretch;
+}
+.size-2x2 .labelRow strong,
+.size-2x2 .labelRow span {
+  padding: 0 1.5px;
+  font-weight: 400;
+  overflow: hidden;
+}
+.size-2x2 .company {
+  flex: 1.4 1 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  align-items: start !important;
+}
+.size-2x2 .label > .barcodeBox,
+.size-2x2 .fbfLabel > .barcodeBox {
+  display: flex !important;
+  flex: 0 0 36px !important;
+  flex-shrink: 0 !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  max-height: 36px !important;
+  padding: 1px 2px 2px !important;
+  overflow: visible !important;
+  border-top: 0.5pt solid #000;
+}
+.size-2x2 .barcodeTitle {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  flex: 0 0 0 !important;
+}
+.size-2x2 .barcodeBox .barcodeImage {
+  display: block !important;
+  flex: 1 1 auto !important;
+  width: 92% !important;
+  height: 20px !important;
+  max-height: 20px !important;
+  object-fit: fill !important;
+  visibility: visible !important;
+}
+.size-2x2 .barcodeNumber {
+  position: relative !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: 9px !important;
+  min-height: 9px !important;
+  line-height: 9px !important;
+  font-size: 6pt !important;
+  font-weight: 400;
+  visibility: visible !important;
+}
+.size-2x3 .labelTitle {
+  font-size: 6pt;
+  padding: 1px 2px;
+}
+.size-2x3 .labelRow {
+  font-size: 5pt;
+  line-height: 1.08;
+}
+.size-2x3 .labelRow strong,
+.size-2x3 .labelRow span {
+  padding: 1px 2px;
+  font-weight: 400;
+}
+.size-2x3 .label > .barcodeBox {
+  min-height: 56px;
+  height: 56px;
+}
+.size-2x3 .barcodeBox .barcodeImage {
+  width: 90% !important;
+  height: 36px !important;
+  object-fit: fill !important;
+}
+.size-2x3 .barcodeNumber {
+  bottom: 3px !important;
+  height: 12px !important;
+  min-height: 12px !important;
+  line-height: 12px !important;
+  font-size: 7.5pt !important;
+  font-weight: 400;
+}
+.size-2x3 .alphaLabel .barcodeBox .barcodeImage {
+  width: 92% !important;
+  height: 40px !important;
+}
+.size-3x3 .labelTitle {
+  font-size: 6.5pt;
+}
+.size-3x3 .labelRow {
+  font-size: 5.5pt;
+  line-height: 1.1;
+}
+.size-3x3 .labelRow strong,
+.size-3x3 .labelRow span {
+  font-weight: 400;
+}
+.size-3x3 .label > .barcodeBox {
+  min-height: 58px;
+  height: 58px;
+}
+.size-3x3 .barcodeBox .barcodeImage {
+  width: 90% !important;
+  height: 38px !important;
+  object-fit: fill !important;
+}
+.size-3x3 .barcodeNumber {
+  bottom: 3px !important;
+  height: 12px !important;
+  min-height: 12px !important;
+  line-height: 12px !important;
+  font-size: 8pt !important;
+  font-weight: 400;
 }
 
 /* 3 x 5 high-readability output: the table keeps its approved geometry and
@@ -3135,19 +3356,21 @@ input:focus-visible {
 
 .size-3x5 .labelTitle {
   display: grid;
-  height: 25px;
-  padding: 4px;
+  height: 22px;
+  padding: 2px 3px;
   place-items: center;
-  font-size: 11px;
+  font-size: 7pt;
+  font-weight: 400;
 }
 
 .size-3x5 .labelRow {
   height: auto;
-  min-height: 15px;
-  align-items: stretch;
+  min-height: 14px;
+  align-items: start;
   overflow: visible;
-  font-size: 7.5px;
-  line-height: 10px;
+  font-size: 7pt;
+  line-height: 1.12;
+  font-weight: 400;
 }
 
 .size-3x5 .labelRow > strong,
@@ -3183,7 +3406,7 @@ input:focus-visible {
   flex: 1 1 auto;
   flex-shrink: 0;
   height: auto;
-  min-height: 148px;
+  min-height: 120px;
 }
 
 .size-3x5 .barcodeBox .barcodeImage {
@@ -3191,6 +3414,38 @@ input:focus-visible {
   width: 90%;
   height: 112px;
   max-height: none;
+}
+
+/* Keep the EAN number immediately beneath the barcode bars — fully visible. */
+.size-3x5 .barcodeBox {
+  overflow: visible;
+  padding-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.size-3x5 .barcodeNumber {
+  bottom: 6px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  line-height: 22px !important;
+  font-size: 13pt;
+  font-weight: 400;
+}
+
+.size-3x5 .alphaLabel .barcodeNumber {
+  bottom: 8px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  line-height: 24px !important;
+  font-size: 14pt;
+  letter-spacing: 0.6px;
+}
+
+.size-3x5 .alphaLabel .barcodeBox .barcodeImage {
+  width: 92%;
+  height: 90px;
+  max-height: calc(100% - 28px);
+  object-fit: fill;
 }
 
 @media print {
@@ -3204,7 +3459,331 @@ input:focus-visible {
   }
 }
 
-/* Keep the EAN number immediately beneath the barcode bars. */
+/* --------------------------------------------------------------------------
+   Unified product-label geometry for every size.
+   Text stays inside cells (no border overlap); field rows share leftover height.
+   -------------------------------------------------------------------------- */
+.size-2x2 {
+  --lt-title: 5pt;
+  --lt-body: 4pt;
+  --lt-small: 3.6pt;
+  --lt-pad-y: 0px;
+  --lt-pad-x: 1.5px;
+  --lt-barcode: 34px;
+  --lt-bar-img: 18px;
+  --lt-ean: 5.5pt;
+  --lt-col: 42% 58%;
+  --lt-title-h: 11px;
+  --lt-special: 1.35;
+}
+.size-2x3 {
+  --lt-title: 5.5pt;
+  --lt-body: 4.6pt;
+  --lt-small: 4.2pt;
+  --lt-pad-y: 0.5px;
+  --lt-pad-x: 2px;
+  --lt-barcode: 48px;
+  --lt-bar-img: 30px;
+  --lt-ean: 6.5pt;
+  --lt-col: 40% 60%;
+  --lt-title-h: 12px;
+  --lt-special: 1.7;
+}
+.size-3x3 {
+  --lt-title: 6pt;
+  --lt-body: 5pt;
+  --lt-small: 4.6pt;
+  --lt-pad-y: 0.5px;
+  --lt-pad-x: 2.5px;
+  --lt-barcode: 50px;
+  --lt-bar-img: 32px;
+  --lt-ean: 7pt;
+  --lt-col: 39% 61%;
+  --lt-title-h: 14px;
+  --lt-special: 1.8;
+}
+.size-3x4 {
+  --lt-title: 6.5pt;
+  --lt-body: 5.6pt;
+  --lt-small: 5.1pt;
+  --lt-pad-y: 1px;
+  --lt-pad-x: 3px;
+  --lt-barcode: 72px;
+  --lt-bar-img: 46px;
+  --lt-ean: 9pt;
+  --lt-col: 36.3% 63.7%;
+  --lt-title-h: 16px;
+  --lt-special: 2.1;
+}
+.size-3x5 {
+  --lt-title: 7pt;
+  --lt-body: 6.5pt;
+  --lt-small: 6pt;
+  --lt-pad-y: 1px;
+  --lt-pad-x: 3px;
+  --lt-barcode: 108px;
+  --lt-bar-img: 78px;
+  --lt-ean: 11pt;
+  --lt-col: 36.3% 63.7%;
+  --lt-title-h: 18px;
+  --lt-special: 2.4;
+}
+
+.size-2x2 .label.alphaLabel,
+.size-2x2 .label.fbfLabel,
+.size-2x3 .label.alphaLabel,
+.size-2x3 .label.fbfLabel,
+.size-3x3 .label.alphaLabel,
+.size-3x3 .label.fbfLabel,
+.size-3x4 .label.alphaLabel,
+.size-3x4 .label.fbfLabel,
+.size-3x5 .label.alphaLabel,
+.size-3x5 .label.fbfLabel {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.size-2x2 .labelTitle,
+.size-2x3 .labelTitle,
+.size-3x3 .labelTitle,
+.size-3x4 .labelTitle,
+.size-3x5 .labelTitle {
+  flex: 0 0 var(--lt-title-h) !important;
+  height: var(--lt-title-h) !important;
+  min-height: var(--lt-title-h) !important;
+  max-height: var(--lt-title-h) !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 2px !important;
+  font-size: var(--lt-title) !important;
+  line-height: 1.05 !important;
+  font-weight: 400 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.size-2x2 .labelRow,
+.size-2x3 .labelRow,
+.size-3x3 .labelRow,
+.size-3x4 .labelRow,
+.size-3x5 .labelRow {
+  flex: 1 1 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: grid !important;
+  grid-template-columns: var(--lt-col) !important;
+  align-items: stretch !important;
+  overflow: hidden !important;
+  font-size: var(--lt-body) !important;
+  line-height: 1.05 !important;
+  font-weight: 400 !important;
+  box-sizing: border-box !important;
+}
+
+.size-2x2 .labelRow.addressRow,
+.size-2x2 .labelRow.complaints,
+.size-2x2 .labelRow.company,
+.size-2x3 .labelRow.addressRow,
+.size-2x3 .labelRow.complaints,
+.size-2x3 .labelRow.company,
+.size-3x3 .labelRow.addressRow,
+.size-3x3 .labelRow.complaints,
+.size-3x3 .labelRow.company,
+.size-3x4 .labelRow.addressRow,
+.size-3x4 .labelRow.complaints,
+.size-3x4 .labelRow.company,
+.size-3x5 .labelRow.addressRow,
+.size-3x5 .labelRow.complaints,
+.size-3x5 .labelRow.company {
+  flex: var(--lt-special) 1 0 !important;
+  font-size: var(--lt-small) !important;
+  line-height: 1.08 !important;
+}
+
+.size-2x2 .labelRow > strong,
+.size-2x2 .labelRow > span,
+.size-2x3 .labelRow > strong,
+.size-2x3 .labelRow > span,
+.size-3x3 .labelRow > strong,
+.size-3x3 .labelRow > span,
+.size-3x4 .labelRow > strong,
+.size-3x4 .labelRow > span,
+.size-3x5 .labelRow > strong,
+.size-3x5 .labelRow > span {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  align-self: stretch !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 100% !important;
+  padding: var(--lt-pad-y) var(--lt-pad-x) !important;
+  overflow: hidden !important;
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  font-weight: 400 !important;
+  line-height: inherit !important;
+  box-sizing: border-box !important;
+}
+
+.size-2x2 .labelRow.addressRow > strong,
+.size-2x2 .labelRow.addressRow > span,
+.size-2x2 .labelRow.complaints > strong,
+.size-2x2 .labelRow.complaints > span,
+.size-2x2 .labelRow.company > strong,
+.size-2x2 .labelRow.company > span,
+.size-2x3 .labelRow.addressRow > strong,
+.size-2x3 .labelRow.addressRow > span,
+.size-2x3 .labelRow.complaints > strong,
+.size-2x3 .labelRow.complaints > span,
+.size-2x3 .labelRow.company > strong,
+.size-2x3 .labelRow.company > span,
+.size-3x3 .labelRow.addressRow > strong,
+.size-3x3 .labelRow.addressRow > span,
+.size-3x3 .labelRow.complaints > strong,
+.size-3x3 .labelRow.complaints > span,
+.size-3x3 .labelRow.company > strong,
+.size-3x3 .labelRow.company > span,
+.size-3x4 .labelRow.addressRow > strong,
+.size-3x4 .labelRow.addressRow > span,
+.size-3x4 .labelRow.complaints > strong,
+.size-3x4 .labelRow.complaints > span,
+.size-3x4 .labelRow.company > strong,
+.size-3x4 .labelRow.company > span,
+.size-3x5 .labelRow.addressRow > strong,
+.size-3x5 .labelRow.addressRow > span,
+.size-3x5 .labelRow.complaints > strong,
+.size-3x5 .labelRow.complaints > span,
+.size-3x5 .labelRow.company > strong,
+.size-3x5 .labelRow.company > span {
+  align-items: flex-start !important;
+  padding-top: 1px !important;
+}
+
+.size-2x2 .label > .barcodeBox,
+.size-2x2 .fbfLabel > .barcodeBox,
+.size-2x3 .label > .barcodeBox,
+.size-2x3 .fbfLabel > .barcodeBox,
+.size-3x3 .label > .barcodeBox,
+.size-3x3 .fbfLabel > .barcodeBox,
+.size-3x4 .label > .barcodeBox,
+.size-3x4 .fbfLabel > .barcodeBox,
+.size-3x5 .label > .barcodeBox,
+.size-3x5 .fbfLabel > .barcodeBox {
+  flex: 0 0 var(--lt-barcode) !important;
+  height: var(--lt-barcode) !important;
+  min-height: var(--lt-barcode) !important;
+  max-height: var(--lt-barcode) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  padding: 2px 3px !important;
+  box-sizing: border-box !important;
+}
+
+.size-2x2 .barcodeBox .barcodeImage,
+.size-2x3 .barcodeBox .barcodeImage,
+.size-3x3 .barcodeBox .barcodeImage,
+.size-3x4 .barcodeBox .barcodeImage,
+.size-3x5 .barcodeBox .barcodeImage {
+  flex: 0 0 auto !important;
+  width: 90% !important;
+  height: var(--lt-bar-img) !important;
+  max-height: var(--lt-bar-img) !important;
+  object-fit: fill !important;
+}
+
+.size-2x2 .barcodeNumber,
+.size-2x3 .barcodeNumber,
+.size-3x3 .barcodeNumber,
+.size-3x4 .barcodeNumber,
 .size-3x5 .barcodeNumber {
-  bottom: 4px;
+  position: static !important;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  line-height: 1.05 !important;
+  font-size: var(--lt-ean) !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+}
+
+.size-2x2 .barcodeTitle,
+.size-2x3 .barcodeTitle,
+.size-3x3 .barcodeTitle,
+.size-3x4 .barcodeTitle,
+.size-3x5 .barcodeTitle {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* Content-aware row heights: long address/company rows borrow from short rows + barcode. */
+.label.smartLayout .labelTitle,
+.label.smartLayout .labelRow,
+.label.smartLayout .smartBarcode {
+  flex: 0 0 var(--rh) !important;
+  height: var(--rh) !important;
+  min-height: var(--rh) !important;
+  max-height: var(--rh) !important;
+  box-sizing: border-box !important;
+}
+
+.label.smartLayout .labelRow {
+  overflow: hidden !important;
+}
+
+.label.smartLayout .labelRow > strong,
+.label.smartLayout .labelRow > span {
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  padding-top: 0.5px !important;
+  padding-bottom: 0.5px !important;
+  overflow: hidden !important;
+  line-height: 1.08 !important;
+}
+
+.label.smartLayout .smartBarcode {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  width: 100%;
+}
+
+.label.smartLayout .smartBarcode .barcodeBox {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 1px 2px !important;
+  box-sizing: border-box !important;
+}
+
+.label.smartLayout .smartBarcode .barcodeImage {
+  flex: 1 1 auto !important;
+  width: 90% !important;
+  height: auto !important;
+  max-height: calc(100% - 10px) !important;
+  object-fit: fill !important;
+}
+
+.label.smartLayout .labelRow.addressRow > strong,
+.label.smartLayout .labelRow.addressRow > span,
+.label.smartLayout .labelRow.complaints > strong,
+.label.smartLayout .labelRow.complaints > span,
+.label.smartLayout .labelRow.company > strong,
+.label.smartLayout .labelRow.company > span {
+  align-items: flex-start !important;
+  overflow: hidden !important;
 }
