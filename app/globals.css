@@ -3469,8 +3469,8 @@ input:focus-visible {
   --lt-small: 3.6pt;
   --lt-pad-y: 0px;
   --lt-pad-x: 1.5px;
-  --lt-barcode: 34px;
-  --lt-bar-img: 18px;
+  --lt-barcode: 48px;
+  --lt-bar-img: 28px;
   --lt-ean: 5.5pt;
   --lt-col: 42% 58%;
   --lt-title-h: 11px;
@@ -3482,8 +3482,8 @@ input:focus-visible {
   --lt-small: 4.2pt;
   --lt-pad-y: 0.5px;
   --lt-pad-x: 2px;
-  --lt-barcode: 48px;
-  --lt-bar-img: 30px;
+  --lt-barcode: 72px;
+  --lt-bar-img: 48px;
   --lt-ean: 6.5pt;
   --lt-col: 40% 60%;
   --lt-title-h: 12px;
@@ -3495,9 +3495,9 @@ input:focus-visible {
   --lt-small: 4.6pt;
   --lt-pad-y: 0.5px;
   --lt-pad-x: 2.5px;
-  --lt-barcode: 50px;
-  --lt-bar-img: 32px;
-  --lt-ean: 7pt;
+  --lt-barcode: 64px;
+  --lt-bar-img: 42px;
+  --lt-ean: 7.5pt;
   --lt-col: 39% 61%;
   --lt-title-h: 14px;
   --lt-special: 1.8;
@@ -3508,8 +3508,8 @@ input:focus-visible {
   --lt-small: 5.1pt;
   --lt-pad-y: 1px;
   --lt-pad-x: 3px;
-  --lt-barcode: 72px;
-  --lt-bar-img: 46px;
+  --lt-barcode: 88px;
+  --lt-bar-img: 56px;
   --lt-ean: 9pt;
   --lt-col: 36.3% 63.7%;
   --lt-title-h: 16px;
@@ -3522,7 +3522,7 @@ input:focus-visible {
   --lt-pad-y: 1px;
   --lt-pad-x: 3px;
   --lt-barcode: 108px;
-  --lt-bar-img: 78px;
+  --lt-bar-img: 76px;
   --lt-ean: 11pt;
   --lt-col: 36.3% 63.7%;
   --lt-title-h: 18px;
@@ -3745,7 +3745,7 @@ input:focus-visible {
 
 .label.smartLayout .labelRow > strong,
 .label.smartLayout .labelRow > span {
-  align-items: flex-start !important;
+  align-items: center !important;
   justify-content: flex-start !important;
   padding-top: 0.5px !important;
   padding-bottom: 0.5px !important;
@@ -3786,4 +3786,30 @@ input:focus-visible {
 .label.smartLayout .labelRow.company > span {
   align-items: flex-start !important;
   overflow: hidden !important;
+}
+
+/* Exact PDF preview — same bytes as download, shown at physical label size. */
+.exactPdfPreview {
+  position: relative;
+  margin: 16px auto 0;
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px #1c29451a;
+  overflow: hidden;
+}
+.exactPdfCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.exactPdfStatus {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #5c5953;
+  background: #faf9f7;
+  font: 600 12px Helvetica, Arial, sans-serif;
+  text-align: center;
 }

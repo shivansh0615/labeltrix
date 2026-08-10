@@ -6,6 +6,7 @@ export type BarcodeSource = "EAN" | "FSN";
 
 /** Product master sizes by marketplace. */
 export const ALPHA_LABEL_SIZES: readonly LabelSize[] = [
+  "3x3",
   "3x4",
   "3x5",
   "2x3",
@@ -116,20 +117,20 @@ const ALPHA_FIELDS: Array<{ label: string; keys: string[] }> = [
 ];
 
 const FBF_FIELDS: Array<{ label: string; keys: string[] }> = [
-  { label: "brand", keys: ["brand"] },
+  { label: "Brand", keys: ["brand"] },
   { label: "FSN", keys: ["FSN"] },
-  { label: "model_name", keys: ["Model_name", "model_name"] },
-  { label: "model_number", keys: ["Model_number", "model_number"] },
-  { label: "color", keys: ["Color", "color"] },
+  { label: "Model Name", keys: ["Model_name", "model_name"] },
+  { label: "Model Number", keys: ["Model_number", "model_number"] },
+  { label: "Color", keys: ["Color", "color"] },
   { label: "EAN", keys: ["EAN", "Ean"] },
-  { label: "type", keys: ["Type", "type"] },
-  { label: "size", keys: ["Size", "size"] },
-  { label: "Net quantity", keys: ["Net quantity"] },
-  { label: "Generic name", keys: ["Generic name"] },
+  { label: "Type", keys: ["Type", "type"] },
+  { label: "Size", keys: ["Size", "size"] },
+  { label: "Net Quantity", keys: ["Net quantity"] },
+  { label: "Generic Name", keys: ["Generic name"] },
   { label: "Dimension", keys: ["Dimension"] },
   { label: "MRP", keys: ["MRP"] },
   {
-    label: "month and year of manufactured",
+    label: "Month And Year Of Manufactured",
     keys: [
       "Month and year of manufactured",
       "month and year of manufactured",
@@ -142,6 +143,39 @@ const FBF_COMPANY_KEYS = [
   "Manufactured & Marketed by & Customer Care Details",
   "manufactured by/Marketed by & customer care details",
 ];
+
+const FBF_COMPANY_LABEL = "Manufactured By/Marketed By & Customer Care Details";
+
+/** Title-case label text; keep FSN/EAN/MRP/U as acronyms. */
+export function toLabelCase(text: string): string {
+  const acronyms = new Set(["fsn", "ean", "mrp", "u", "po", "sku", "id"]);
+  return String(text ?? "")
+    .replace(/_/g, " ")
+    .split(/(\s+|\/|&|\n)/)
+    .map((token) => {
+      if (!token || token === "\n" || /^[\s\/&]+$/.test(token)) return token;
+      const lower = token.toLowerCase();
+      if (acronyms.has(lower)) return lower.toUpperCase();
+      // Keep short all-caps tokens (e.g. "Rs.") mostly intact on first letter.
+      return token.charAt(0).toUpperCase() + token.slice(1);
+    })
+    .join("");
+}
+
+/** Title-case values, but leave codes / emails / pure IDs unchanged. */
+export function toValueCase(text: string): string {
+  const raw = String(text ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  if (/@/.test(trimmed) || /^https?:\/\//i.test(trimmed)) return raw;
+  const compact = trimmed.replace(/\s+/g, "");
+  if (/^\d{8,}$/.test(compact)) return raw; // EAN-like
+  if (/^[A-Z0-9]{10,}$/.test(compact)) return raw; // FSN-like
+  return trimmed
+    .split("\n")
+    .map((line) => toLabelCase(line.trim()))
+    .join("\n");
+}
 
 function normalizeHeader(key: string) {
   return key.replace(/\s+/g, " ").trim().toLowerCase();
@@ -227,7 +261,8 @@ function sizeScale(labelSize: LabelSize) {
     case "3x4":
       return { title: 6.0, body: 5.5, small: 5.1, pad: 1.6, ean: 10, line: 1.08 };
     case "3x3":
-      return { title: 5.0, body: 4.5, small: 4.2, pad: 1.3, ean: 7.5, line: 1.05 };
+      // Compact square: keep type readable without forcing printer stretch.
+      return { title: 5.2, body: 4.6, small: 4.2, pad: 1.4, ean: 8, line: 1.05 };
     case "2x3":
       return { title: 4.6, body: 4.1, small: 3.8, pad: 1.2, ean: 7, line: 1.04 };
     case "2x2":
@@ -238,8 +273,11 @@ function sizeScale(labelSize: LabelSize) {
 function pageMargin(labelSize: LabelSize) {
   if (labelSize === "2x2") return 1.0;
   if (labelSize === "2x3") return 1.2;
-  if (labelSize === "3x3") return 1.4;
-  if (labelSize === "3x4") return 1.6;
+  // 3x3 / 3x4 / 3x5: inset so the outer box stays inside the die-cut sticker
+  // (prevents the open/clipped top border on gumming printers).
+  if (labelSize === "3x3" || labelSize === "3x4" || labelSize === "3x5") {
+    return 8;
+  }
   return 2;
 }
 
@@ -265,6 +303,8 @@ function alphaBandHeights(labelSize: LabelSize) {
       return { titleH: 14, addressH: 30, complaintsH: 28, barcodeH: 96 };
     case "3x4":
       return { titleH: 12, addressH: 24, complaintsH: 22, barcodeH: 68 };
+    case "3x3":
+      return { titleH: 10, addressH: 18, complaintsH: 16, barcodeH: 48 };
     case "2x3":
       return { titleH: 9, addressH: 16, complaintsH: 14, barcodeH: 44 };
     default:
@@ -279,7 +319,7 @@ function fbfBandHeights(labelSize: LabelSize) {
     case "3x4":
       return { titleH: 13, companyH: 26, barcodeH: 56 };
     case "3x3":
-      return { titleH: 11, companyH: 20, barcodeH: 42 };
+      return { titleH: 10, companyH: 18, barcodeH: 48 };
     case "2x3":
       return { titleH: 10, companyH: 18, barcodeH: 38 };
     case "2x2":
@@ -292,8 +332,8 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
   switch (labelSize) {
     case "3x5":
       return {
-        widthRatio: 0.9,
-        barH: format === "EAN13" ? 60 : 52,
+        widthRatio: 0.92,
+        barH: format === "EAN13" ? 66 : 56,
         bottomPad: 5,
         gap: 3.5,
         topPad: 4,
@@ -301,8 +341,8 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
       };
     case "3x4":
       return {
-        widthRatio: 0.9,
-        barH: format === "EAN13" ? 44 : 38,
+        widthRatio: 0.92,
+        barH: format === "EAN13" ? 50 : 42,
         bottomPad: 4,
         gap: 3,
         topPad: 3.5,
@@ -310,8 +350,8 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
       };
     case "3x3":
       return {
-        widthRatio: 0.88,
-        barH: format === "EAN13" ? 28 : 24,
+        widthRatio: 0.9,
+        barH: format === "EAN13" ? 34 : 30,
         bottomPad: 3,
         gap: 2,
         topPad: 2.5,
@@ -319,8 +359,8 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
       };
     case "2x3":
       return {
-        widthRatio: 0.88,
-        barH: format === "EAN13" ? 28 : 24,
+        widthRatio: 0.9,
+        barH: format === "EAN13" ? 40 : 34,
         bottomPad: 3,
         gap: 2,
         topPad: 2.5,
@@ -328,10 +368,10 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
       };
     case "2x2":
       return {
-        widthRatio: 0.88,
-        barH: format === "EAN13" ? 16 : 14,
+        widthRatio: 0.9,
+        barH: format === "EAN13" ? 24 : 20,
         bottomPad: 2,
-        gap: 1.2,
+        gap: 1.5,
         topPad: 1.5,
         wide,
       };
@@ -360,11 +400,14 @@ function strokeOuter(
   w: number,
   h: number,
 ) {
+  // pdf-lib centers the stroke on the path — inset by half so the full
+  // top/side lines stay on the page (avoids an "open" top box when clipped).
+  const inset = OUTER_BORDER / 2;
   page.drawRectangle({
-    x,
-    y,
-    width: w,
-    height: h,
+    x: x + inset,
+    y: y + inset,
+    width: Math.max(1, w - OUTER_BORDER),
+    height: Math.max(1, h - OUTER_BORDER),
     borderColor: BLACK,
     borderWidth: OUTER_BORDER,
   });
@@ -597,64 +640,93 @@ export type HeightSlot = {
   keep: number;
 };
 
-/** Give tall content the height it needs; borrow from barcode / short rows.
- *  Never shrink a row below its content `min` unless the whole sticker is overfull,
- *  in which case content is scaled evenly (last resort). */
+/**
+ * Uniform field rows + barcode-first leftover space.
+ * - All `field-*` rows share one equal height (no one tall/odd blank cell).
+ * - Company/address stay tight to content.
+ * - Extra space goes to the barcode (main purpose of the sticker).
+ */
 export function allocateRowHeights(
   usableH: number,
   slots: HeightSlot[],
 ): Record<string, number> {
-  const heights = slots.map((s) => Math.max(s.min, s.prefer));
-  const total = () => heights.reduce((a, b) => a + b, 0);
+  const bi = slots.findIndex((s) => s.key === "barcode");
+  const fieldIdx = slots
+    .map((s, i) => (s.key.startsWith("field-") ? i : -1))
+    .filter((i) => i >= 0);
+  const specialIdx = slots
+    .map((s, i) =>
+      s.key === "company" ||
+      s.key === "address" ||
+      s.key === "complaints" ||
+      s.key === "title"
+        ? i
+        : -1,
+    )
+    .filter((i) => i >= 0);
 
-  let spare = usableH - total();
-  if (spare > 0.05) {
-    const heavy = slots
-      .map((s, i) => ({ i, keep: s.keep }))
-      .filter((t) => t.keep >= 3);
-    if (heavy.length) {
-      const each = spare / heavy.length;
-      for (const t of heavy) heights[t.i] += each;
-    } else {
-      const bi = slots.findIndex((s) => s.key === "barcode");
-      heights[bi >= 0 ? bi : heights.length - 1] += spare;
-    }
+  const heights = slots.map((s) => s.min);
+
+  // Title / company / address: content-tight (prefer only for title band).
+  for (const i of specialIdx) {
+    const s = slots[i];
+    heights[i] =
+      s.key === "title" ? Math.max(s.min, s.prefer) : s.min;
   }
 
-  let deficit = total() - usableH;
-  if (deficit > 0.05) {
-    const order = slots
-      .map((s, i) => ({
-        i,
-        keep: s.keep,
-        excess: heights[i] - s.min,
-      }))
-      .filter((t) => t.excess > 0.05)
-      .sort((a, b) => a.keep - b.keep || b.excess - a.excess);
-    for (const t of order) {
-      if (deficit <= 0.05) break;
-      const take = Math.min(t.excess, deficit);
-      heights[t.i] -= take;
-      deficit -= take;
-    }
+  // Lock barcode prefer first so scanning area isn't starved by table padding.
+  if (bi >= 0) {
+    heights[bi] = Math.max(slots[bi].min, slots[bi].prefer);
   }
 
-  // Last resort: content mins exceed the sticker — scale content, keep barcode at floor.
-  const sumMin = slots.reduce((a, s) => a + s.min, 0);
-  if (sumMin > usableH + 0.05) {
-    const bi = slots.findIndex((s) => s.key === "barcode");
-    const barcodeMin = bi >= 0 ? slots[bi].min : 0;
-    if (bi >= 0) heights[bi] = barcodeMin;
-    const rest = Math.max(1, usableH - barcodeMin);
+  const sum = () => heights.reduce((a, b) => a + b, 0);
+  const nonFieldSum = () =>
+    heights.reduce((a, h, i) => (fieldIdx.includes(i) ? a : a + h), 0);
+
+  // All data fields share one equal height from whatever is left.
+  if (fieldIdx.length) {
+    const contentFloor = Math.max(...fieldIdx.map((i) => slots[i].min));
+    const room = usableH - nonFieldSum();
+    const equal = Math.max(contentFloor, room / fieldIdx.length);
+    for (const i of fieldIdx) heights[i] = equal;
+  }
+
+  // If overfull: shrink barcode toward min, then lower every field row together.
+  let over = sum() - usableH;
+  if (over > 0.05 && bi >= 0) {
+    const take = Math.min(over, heights[bi] - slots[bi].min);
+    heights[bi] -= take;
+    over -= take;
+  }
+  if (over > 0.05 && fieldIdx.length) {
+    const perField = over / fieldIdx.length;
+    const lowestOwnMin = Math.min(...fieldIdx.map((i) => slots[i].min));
+    const next = Math.max(lowestOwnMin, heights[fieldIdx[0]] - perField);
+    for (const i of fieldIdx) heights[i] = next;
+    over = sum() - usableH;
+  }
+  // Still over: scale all non-barcode content evenly; keep barcode at min.
+  if (over > 0.05) {
+    if (bi >= 0) heights[bi] = slots[bi].min;
+    const rest = Math.max(1, usableH - (bi >= 0 ? heights[bi] : 0));
     const contentIdx = slots.map((_, i) => i).filter((i) => i !== bi);
-    const contentMin = contentIdx.reduce((a, i) => a + slots[i].min, 0);
-    const factor = contentMin > 0 ? rest / contentMin : 1;
-    for (const i of contentIdx) heights[i] = slots[i].min * factor;
+    const contentSum = contentIdx.reduce((a, i) => a + heights[i], 0);
+    const factor = contentSum > 0 ? rest / contentSum : 1;
+    for (const i of contentIdx) heights[i] *= factor;
   }
 
-  const drift = usableH - total();
+  // Underfull: all spare → barcode (never inflate one random data cell).
+  const spare = usableH - sum();
+  if (spare > 0.05) {
+    if (bi >= 0) heights[bi] += spare;
+    else if (fieldIdx.length) {
+      const each = spare / fieldIdx.length;
+      for (const i of fieldIdx) heights[i] += each;
+    }
+  }
+
+  const drift = usableH - sum();
   if (Math.abs(drift) > 0.05) {
-    const bi = slots.findIndex((s) => s.key === "barcode");
     const idx = bi >= 0 ? bi : heights.length - 1;
     heights[idx] = Math.max(slots[idx].min * 0.5, heights[idx] + drift);
   }
@@ -668,17 +740,18 @@ export function allocateRowHeights(
 
 function barcodeHeightSlot(labelSize: LabelSize, scale = 1): HeightSlot {
   const S = (n: number) => n * scale;
+  // Prefer tall barcodes — scanning is the label's main job.
   switch (labelSize) {
     case "3x5":
-      return { key: "barcode", min: S(48), prefer: S(70), keep: 0 };
+      return { key: "barcode", min: S(76), prefer: S(98), keep: 0 };
     case "3x4":
-      return { key: "barcode", min: S(36), prefer: S(56), keep: 0 };
+      return { key: "barcode", min: S(60), prefer: S(80), keep: 0 };
     case "3x3":
-      return { key: "barcode", min: S(26), prefer: S(42), keep: 0 };
+      return { key: "barcode", min: S(42), prefer: S(54), keep: 0 };
     case "2x3":
-      return { key: "barcode", min: S(24), prefer: S(38), keep: 0 };
+      return { key: "barcode", min: S(48), prefer: S(64), keep: 0 };
     case "2x2":
-      return { key: "barcode", min: S(16), prefer: S(26), keep: 0 };
+      return { key: "barcode", min: S(32), prefer: S(42), keep: 0 };
   }
 }
 
@@ -712,12 +785,12 @@ function measureFromFont(font: PDFFont) {
 }
 
 function slotFromNeed(key: string, need: RowNeed, keepSingle: number): HeightSlot {
-  // min === prefer → allocator cannot clip wrapped text to “borrow” space.
+  // Content floor only — spare space is equalized across fields / given to barcode.
   return {
     key,
     min: need.height,
     prefer: need.height,
-    keep: need.lines > 1 ? Math.max(3, keepSingle) : keepSingle,
+    keep: keepSingle,
   };
 }
 
@@ -968,8 +1041,7 @@ export function computeSmartLabelLayoutPx(
   const measure = approxTextWidth;
 
   if (marketplace === "FBF") {
-    const companyLabel =
-      "manufactured by/Marketed by & customer care details";
+    const companyLabel = FBF_COMPANY_LABEL;
     const companyCombined = fieldValue(product.payload, ...FBF_COMPANY_KEYS);
     const companyValue = [
       companyCombined,
@@ -1163,7 +1235,7 @@ function drawRow(
   const valueW = width - labelW;
   drawCellText(
     page,
-    label,
+    toLabelCase(label),
     font,
     fontSize,
     x,
@@ -1176,7 +1248,7 @@ function drawRow(
   );
   drawCellText(
     page,
-    value,
+    toValueCase(value),
     font,
     fontSize,
     x + labelW,
@@ -1384,7 +1456,7 @@ async function drawFbfProduct(
   const labelRatio = labelColumnRatio(labelSize, "FBF");
   const measure = measureFromFont(font);
 
-  const companyLabel = "manufactured by/Marketed by & customer care details";
+  const companyLabel = FBF_COMPANY_LABEL;
   const companyCombined = fieldValue(product.payload, ...FBF_COMPANY_KEYS);
   const company = [
     companyCombined,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import JsBarcode from "jsbarcode";
 import {
@@ -321,6 +321,100 @@ function Barcode({
     </div>
   );
 }
+
+/** Preview painted from the same PDF bytes that download uses. */
+function ExactPdfPreview({
+  labelSize,
+  buildKey,
+  build,
+}: {
+  labelSize: LabelSize;
+  buildKey: string;
+  build: () => Promise<Uint8Array>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [message, setMessage] = useState("Rendering PDF preview…");
+  const dims = labelSizeCssInches(labelSize);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    setMessage("Rendering PDF preview…");
+
+    (async () => {
+      try {
+        const bytes = await build();
+        if (cancelled) return;
+
+        const pdfjs = await import("pdfjs-dist");
+        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+          const worker = await import(
+            "pdfjs-dist/build/pdf.worker.min.mjs?url"
+          );
+          pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        }
+
+        const data = bytes.slice();
+        const doc = await pdfjs.getDocument({ data }).promise;
+        if (cancelled) return;
+        const page = await doc.getPage(1);
+        // Sharp on-screen render; CSS sizes the canvas to physical label inches.
+        const viewport = page.getViewport({ scale: 2.5 });
+        const canvas = canvasRef.current;
+        if (!canvas || cancelled) return;
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas unavailable for PDF preview.");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+        }).promise;
+        if (!cancelled) setStatus("ready");
+      } catch (error) {
+        if (!cancelled) {
+          setStatus("error");
+          setMessage(
+            error instanceof Error ? error.message : "PDF preview failed.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // buildKey captures product/size/barcode changes; build is recreated each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildKey, labelSize]);
+
+  return (
+    <div
+      className="exactPdfPreview"
+      style={{ width: dims.width, height: dims.height }}
+    >
+      {status !== "ready" && (
+        <div className="exactPdfStatus" role="status">
+          {message}
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        className="exactPdfCanvas"
+        style={{
+          width: dims.width,
+          height: dims.height,
+          visibility: status === "ready" ? "visible" : "hidden",
+        }}
+      />
+    </div>
+  );
+}
 const alphaFields: Array<{ label: string; keys: string[] }> = [
   { label: "Date Of Manufacture", keys: ["Date Of Manufacture "] },
   { label: "Brand", keys: ["Brand "] },
@@ -337,20 +431,20 @@ const alphaFields: Array<{ label: string; keys: string[] }> = [
   { label: "Country Of Origin", keys: ["Country Of Origin"] },
 ];
 const fbfFields: Array<{ label: string; keys: string[] }> = [
-  { label: "brand", keys: ["brand"] },
+  { label: "Brand", keys: ["brand"] },
   { label: "FSN", keys: ["FSN"] },
-  { label: "model_name", keys: ["Model_name", "model_name"] },
-  { label: "model_number", keys: ["Model_number", "model_number"] },
-  { label: "color", keys: ["Color", "color"] },
+  { label: "Model Name", keys: ["Model_name", "model_name"] },
+  { label: "Model Number", keys: ["Model_number", "model_number"] },
+  { label: "Color", keys: ["Color", "color"] },
   { label: "EAN", keys: ["EAN", "Ean"] },
-  { label: "type", keys: ["Type", "type"] },
-  { label: "size", keys: ["Size", "size"] },
-  { label: "Net quantity", keys: ["Net quantity"] },
-  { label: "Generic name", keys: ["Generic name"] },
+  { label: "Type", keys: ["Type", "type"] },
+  { label: "Size", keys: ["Size", "size"] },
+  { label: "Net Quantity", keys: ["Net quantity"] },
+  { label: "Generic Name", keys: ["Generic name"] },
   { label: "Dimension", keys: ["Dimension"] },
   { label: "MRP", keys: ["MRP"] },
   {
-    label: "month and year of manufactured",
+    label: "Month And Year Of Manufactured",
     keys: [
       "Month and year of manufactured",
       "month and year of manufactured",
@@ -496,7 +590,7 @@ function ProductLabel({
         </div>
       ))}
       <div className="labelRow company" style={rh(layout.special[0])}>
-        <strong>manufactured by/Marketed by &amp; customer care details</strong>
+        <strong>Manufactured By/Marketed By &amp; Customer Care Details</strong>
         <span>
           {fbfCompanyText(d)
             .split("\n")
@@ -1973,13 +2067,27 @@ export default function Home() {
                       <div className="previewHead">
                         <h3>Product label preview</h3>
                         <span>
-                          Barcode from {barcodeSource}
+                          Exact PDF · barcode from {barcodeSource}
                         </span>
                       </div>
-                      <ProductLabel
-                        product={selected}
+                      <ExactPdfPreview
                         labelSize={labelSize}
-                        barcodeSource={barcodeSource}
+                        buildKey={[
+                          selected.marketplace,
+                          selected.ean,
+                          selected.fsn,
+                          labelSize,
+                          barcodeSource,
+                          selected.updatedAt || "",
+                          JSON.stringify(selected.payload),
+                        ].join("|")}
+                        build={() =>
+                          buildProductsPdf(
+                            [selected],
+                            labelSize,
+                            barcodeSource,
+                          )
+                        }
                       />
                     </section>
                   </div>
@@ -2253,7 +2361,22 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
-                      <RunLabel run={selectedRun} index={runLabelIndex} />
+                      <ExactPdfPreview
+                        labelSize={labelSize}
+                        buildKey={[
+                          selectedRun.id ?? selectedRun.sourceFile,
+                          String(runLabelIndex),
+                          labelSize,
+                          selectedRun.marketplace,
+                        ].join("|")}
+                        build={() =>
+                          buildPackagingPdf(
+                            selectedRun,
+                            [runLabelIndex],
+                            labelSize,
+                          )
+                        }
+                      />
                     </section>
                   </div>
                   {printScope && (
