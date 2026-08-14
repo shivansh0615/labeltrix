@@ -158,18 +158,22 @@ function readRows(wb: XLSX.WorkBook, name: string) {
   });
 }
 
+/** EAN for product masters: classic EAN column, or newer Alpha Barcode/PO export. */
+function productEan(row: Record<string, unknown>) {
+  return value(row, "EAN", "Ean", "ean", "Barcode", "barcode", "PO", "Po");
+}
+
 /** Product masters: data lives on sheet 1 only. Sheet 2 is a visual label mock — never read. */
 function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
   const names = wb.SheetNames;
   if (names.includes("Product Details")) return "Product Details";
-  // First sheet only if it looks like a product master (has EAN/FSN columns).
+  // First sheet only if it looks like a product master (FSN + EAN/Barcode/PO).
   const first = names[0];
   if (!first || !wb.Sheets[first]) return null;
   const sample = readRows(wb, first).slice(0, 5);
   if (!sample.length) return null;
   const looksProduct = sample.some(
-    (row) =>
-      value(row, "EAN", "Ean", "ean") && value(row, "FSN", "Fsn", "fsn"),
+    (row) => productEan(row) && value(row, "FSN", "Fsn", "fsn"),
   );
   return looksProduct ? first : null;
 }
@@ -195,9 +199,14 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
             : ["Date Of Manufacture "],
         );
         applyPreviousMonthManufactureDate(payload, fbf ? "FBF" : "Alpha");
+        const ean = productEan(r);
+        // Keep barcode helpers consistent when the sheet only has Barcode/PO.
+        if (ean && !value(payload, "EAN", "Ean", "ean")) {
+          payload.EAN = ean;
+        }
         return {
           marketplace: fbf ? "FBF" : "Alpha",
-          ean: value(r, "EAN", "Ean", "ean"),
+          ean,
           fsn: value(r, "FSN", "Fsn", "fsn"),
           sku: value(
             r,
@@ -279,7 +288,7 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
     };
   }
   throw new Error(
-    "Workbook type not recognised. Product masters need a Product Details (1st) sheet with EAN and FSN. Packaging lists need Packaging List + Label Format, or FBF Packaging List + Box Label Format.",
+    "Workbook type not recognised. Product masters need a Product Details (1st) sheet with FSN plus EAN (or Barcode/PO). Packaging lists need Packaging List + Label Format, or FBF Packaging List + Box Label Format.",
   );
 }
 
