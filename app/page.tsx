@@ -469,7 +469,7 @@ const FBF_COMPANY_KEYS = [
 
 function alphaAddressLines(d: Record<string, unknown>) {
   const combined = value(d, "Marketed & Manufactured By");
-  if (combined) return { label: "Marketed & Manufactured By", text: combined };
+  if (combined) return { label: "Marketed &\nManufactured By", text: combined };
   const marketed = value(d, "Marketed By / Imported By");
   const manufactured = value(d, "Manufactured By ") || "—";
   return {
@@ -710,6 +710,8 @@ const PDF_PAGE_SIZES: Record<
   "3x3": { widthPoints: 216, heightPoints: 216 },
   "3x4": { widthPoints: 216, heightPoints: 288 },
   "3x5": { widthPoints: 216, heightPoints: 360 },
+  "4x4": { widthPoints: 288, heightPoints: 288 },
+  "5x5": { widthPoints: 360, heightPoints: 360 },
 };
 
 async function isNativePdfServiceReady() {

@@ -1,12 +1,30 @@
-import { PDFDocument, StandardFonts, rgb, PDFName, type PDFFont, type PDFPage } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  rgb,
+  PDFName,
+  type PDFFont,
+  type PDFPage,
+  LineJoinStyle,
+  TextRenderingMode,
+  popGraphicsState,
+  pushGraphicsState,
+  setFillingRgbColor,
+  setLineJoin,
+  setLineWidth,
+  setStrokingRgbColor,
+  setTextRenderingMode,
+} from "pdf-lib";
 import JsBarcode from "jsbarcode";
 
-export type LabelSize = "2x2" | "2x3" | "3x3" | "3x4" | "3x5";
+export type LabelSize = "2x2" | "2x3" | "3x3" | "3x4" | "3x5" | "4x4" | "5x5";
 export type BarcodeSource = "EAN" | "FSN";
 
 /** Product master sizes by marketplace. */
 export const ALPHA_LABEL_SIZES: readonly LabelSize[] = [
   "3x3",
+  "4x4",
+  "5x5",
   "3x4",
   "3x5",
   "2x3",
@@ -14,6 +32,8 @@ export const ALPHA_LABEL_SIZES: readonly LabelSize[] = [
 export const FBF_LABEL_SIZES: readonly LabelSize[] = [
   "2x2",
   "3x3",
+  "4x4",
+  "5x5",
   "2x3",
   "3x4",
   "3x5",
@@ -96,9 +116,89 @@ const PAGE_SIZES: Record<LabelSize, { width: number; height: number }> = {
   "3x3": { width: 216, height: 216 },
   "3x4": { width: 216, height: 288 },
   "3x5": { width: 216, height: 360 },
+  "4x4": { width: 288, height: 288 },
+  "5x5": { width: 360, height: 360 },
 };
 
 const BLACK = rgb(0, 0, 0);
+
+/** ~0.6 device px at 203 DPI — only used if Arial cannot be embedded. */
+const THERMAL_TEXT_STROKE = 0.22;
+
+async function loadArialBytes(): Promise<Uint8Array | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const res = await fetch("/fonts/Arial.ttf");
+    if (res.ok) {
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength > 10_000) return bytes;
+    }
+  } catch {
+    /* try local fonts next */
+  }
+  try {
+    const query = (
+      window as Window & {
+        queryLocalFonts?: (options?: {
+          postscriptNames?: string[];
+        }) => Promise<Array<{ family: string; style: string; blob: () => Promise<Blob> }>>;
+      }
+    ).queryLocalFonts;
+    if (!query) return null;
+    const fonts = await query({ postscriptNames: ["ArialMT"] });
+    const regular =
+      fonts.find(
+        (font) =>
+          font.family === "Arial" && /^regular$/i.test(font.style),
+      ) || fonts[0];
+    if (!regular) return null;
+    return new Uint8Array(await (await regular.blob()).arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+async function embedLabelFont(pdf: PDFDocument): Promise<PDFFont> {
+  const arial = await loadArialBytes();
+  if (arial) {
+    try {
+      return await pdf.embedFont(arial, { subset: true });
+    } catch {
+      return pdf.embedFont(arial);
+    }
+  }
+  return pdf.embedFont(StandardFonts.Helvetica);
+}
+
+function isHelvetica(font: PDFFont) {
+  return /Helvetica/i.test(font.name);
+}
+
+function drawSolidBlackText(
+  page: PDFPage,
+  text: string,
+  font: PDFFont,
+  size: number,
+  x: number,
+  y: number,
+) {
+  // BarTender TrueType is fill-only. Stroke is a Helvetica fallback so 203 DPI
+  // Type1 text does not rasterize to gray.
+  if (isHelvetica(font)) {
+    page.pushOperators(
+      pushGraphicsState(),
+      setFillingRgbColor(0, 0, 0),
+      setStrokingRgbColor(0, 0, 0),
+      setLineWidth(THERMAL_TEXT_STROKE),
+      setLineJoin(LineJoinStyle.Round),
+      setTextRenderingMode(TextRenderingMode.FillAndOutline),
+    );
+  }
+  page.drawText(text, { x, y, size, font, color: BLACK });
+  if (isHelvetica(font)) {
+    page.pushOperators(popGraphicsState());
+  }
+}
 
 const ALPHA_FIELDS: Array<{ label: string; keys: string[] }> = [
   { label: "Date Of Manufacture", keys: ["Date Of Manufacture "] },
@@ -162,6 +262,13 @@ export function toLabelCase(text: string): string {
     .join("");
 }
 
+function compactInclusiveTaxes(text: string) {
+  return text.replace(
+    /\(\s*Inclusive\s+Of\s+All\s+Taxes\s*\)/gi,
+    "(Inc of all taxes)",
+  );
+}
+
 /** Title-case values, but leave codes / emails / pure IDs unchanged. */
 export function toValueCase(text: string): string {
   const raw = String(text ?? "");
@@ -171,10 +278,11 @@ export function toValueCase(text: string): string {
   const compact = trimmed.replace(/\s+/g, "");
   if (/^\d{8,}$/.test(compact)) return raw; // EAN-like
   if (/^[A-Z0-9]{10,}$/.test(compact)) return raw; // FSN-like
-  return trimmed
+  const titled = trimmed
     .split("\n")
     .map((line) => toLabelCase(line.trim()))
     .join("\n");
+  return compactInclusiveTaxes(titled);
 }
 
 function normalizeHeader(key: string) {
@@ -252,17 +360,49 @@ function fieldValue(
   return "";
 }
 
-/** Typography for gumming/sticker printers — regular Helvetica only.
- *  Sized so glyphs clear hairline borders inside each row height. */
+function isThermalSquare(labelSize: LabelSize) {
+  return labelSize === "3x3" || labelSize === "4x4" || labelSize === "5x5";
+}
+
+/** Side length in inches for square thermal labels. */
+function squareSide(labelSize: LabelSize) {
+  if (labelSize === "5x5") return 5;
+  if (labelSize === "4x4") return 4;
+  return 3;
+}
+
+/** Scale factor vs the 3×3 master (same design, true 1:1 inches). */
+function squareScale(labelSize: LabelSize) {
+  return squareSide(labelSize) / 3;
+}
+
+/** Typography for 203 DPI thermal-transfer (TSC TTP-244 Pro).
+ *  Regular Helvetica only in the PDF (standard vector font; not Bold).
+ *  Square sizes share one 3×3 master scaled by side/3. */
 function sizeScale(labelSize: LabelSize) {
+  const square = (side: number) => {
+    const k = side / 3;
+    return {
+      title: 11 * k,
+      body: 8.5 * k,
+      small: 8.5 * k,
+      pad: 1.2 * k,
+      ean: 8.5 * k,
+      line: 1.18,
+    };
+  };
   switch (labelSize) {
     case "3x5":
-      return { title: 6.8, body: 6.5, small: 6.0, pad: 2.0, ean: 12, line: 1.1 };
+      return { title: 7.4, body: 6.5, small: 6.2, pad: 2.0, ean: 11, line: 1.12 };
     case "3x4":
-      return { title: 6.0, body: 5.5, small: 5.1, pad: 1.6, ean: 10, line: 1.08 };
+      // Own 3×4 thermal layout — not a scaled 3×3. Extra inch → type + row height.
+      return { title: 10.5, body: 9, small: 8.8, pad: 1.6, ean: 11.5, line: 1.12 };
     case "3x3":
-      // Compact square: keep type readable without forcing printer stretch.
-      return { title: 5.2, body: 4.6, small: 4.2, pad: 1.4, ean: 8, line: 1.05 };
+      return square(3);
+    case "4x4":
+      return square(4);
+    case "5x5":
+      return square(5);
     case "2x3":
       return { title: 4.6, body: 4.1, small: 3.8, pad: 1.2, ean: 7, line: 1.04 };
     case "2x2":
@@ -270,14 +410,33 @@ function sizeScale(labelSize: LabelSize) {
   }
 }
 
+/** Floor for 3×3 field rows that are shorter than 9pt after barcode is reserved. */
+function thermalTextFloor(labelSize: LabelSize) {
+  switch (labelSize) {
+    case "5x5":
+    case "4x4":
+      return 6.2;
+    case "3x3":
+      return 5.8;
+    case "3x4":
+      return 8.5;
+    case "3x5":
+      return 6;
+    case "2x3":
+      return 4.5;
+    case "2x2":
+      return 3.4;
+  }
+}
+
 function pageMargin(labelSize: LabelSize) {
   if (labelSize === "2x2") return 1.0;
   if (labelSize === "2x3") return 1.2;
-  // 3x3 / 3x4 / 3x5: inset so the outer box stays inside the die-cut sticker
-  // (prevents the open/clipped top border on gumming printers).
-  if (labelSize === "3x3" || labelSize === "3x4" || labelSize === "3x5") {
-    return 8;
-  }
+  if (labelSize === "3x3") return 6;
+  if (labelSize === "4x4") return 7;
+  if (labelSize === "5x5") return 8;
+  if (labelSize === "3x4") return 8;
+  if (labelSize === "3x5") return 8;
   return 2;
 }
 
@@ -289,10 +448,13 @@ function labelColumnRatio(
   if (marketplace === "FBF") {
     if (labelSize === "2x2") return 0.42;
     if (labelSize === "2x3") return 0.4;
-    if (labelSize === "3x3") return 0.39;
+    if (labelSize === "3x3" || labelSize === "4x4" || labelSize === "5x5")
+      return 0.39;
+    if (labelSize === "3x4") return 0.4;
     return 0.38;
   }
   if (labelSize === "2x3") return 0.4;
+  if (labelSize === "3x4") return 0.39;
   return LABEL_RATIO;
 }
 
@@ -302,9 +464,13 @@ function alphaBandHeights(labelSize: LabelSize) {
     case "3x5":
       return { titleH: 14, addressH: 30, complaintsH: 28, barcodeH: 96 };
     case "3x4":
-      return { titleH: 12, addressH: 24, complaintsH: 22, barcodeH: 68 };
+      return { titleH: 18, addressH: 32, complaintsH: 36, barcodeH: 51 };
     case "3x3":
-      return { titleH: 10, addressH: 18, complaintsH: 16, barcodeH: 48 };
+      return { titleH: 18, addressH: 28, complaintsH: 28, barcodeH: 46 };
+    case "4x4":
+      return { titleH: 22, addressH: 34, complaintsH: 34, barcodeH: 56 };
+    case "5x5":
+      return { titleH: 26, addressH: 40, complaintsH: 40, barcodeH: 68 };
     case "2x3":
       return { titleH: 9, addressH: 16, complaintsH: 14, barcodeH: 44 };
     default:
@@ -317,9 +483,13 @@ function fbfBandHeights(labelSize: LabelSize) {
     case "3x5":
       return { titleH: 15, companyH: 32, barcodeH: 70 };
     case "3x4":
-      return { titleH: 13, companyH: 26, barcodeH: 56 };
+      return { titleH: 18, companyH: 40, barcodeH: 51 };
     case "3x3":
-      return { titleH: 10, companyH: 18, barcodeH: 48 };
+      return { titleH: 18, companyH: 28, barcodeH: 46 };
+    case "4x4":
+      return { titleH: 22, companyH: 34, barcodeH: 56 };
+    case "5x5":
+      return { titleH: 26, companyH: 40, barcodeH: 68 };
     case "2x3":
       return { titleH: 10, companyH: 18, barcodeH: 38 };
     case "2x2":
@@ -329,6 +499,17 @@ function fbfBandHeights(labelSize: LabelSize) {
 
 function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
   const wide = format === "EAN13" || format === "CODE128";
+  if (isThermalSquare(labelSize)) {
+    const k = squareScale(labelSize);
+    return {
+      widthRatio: 0.9,
+      barH: (format === "EAN13" ? 30 : 26) * k,
+      bottomPad: 1.75 * k,
+      gap: 1.5 * k,
+      topPad: 0.75 * k,
+      wide,
+    };
+  }
   switch (labelSize) {
     case "3x5":
       return {
@@ -341,20 +522,11 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
       };
     case "3x4":
       return {
-        widthRatio: 0.92,
-        barH: format === "EAN13" ? 50 : 42,
-        bottomPad: 4,
-        gap: 3,
-        topPad: 3.5,
-        wide,
-      };
-    case "3x3":
-      return {
         widthRatio: 0.9,
-        barH: format === "EAN13" ? 34 : 30,
-        bottomPad: 3,
-        gap: 2,
-        topPad: 2.5,
+        barH: format === "EAN13" ? 32 : 28,
+        bottomPad: 3.5,
+        gap: 1.5,
+        topPad: 1,
         wide,
       };
     case "2x3":
@@ -375,14 +547,33 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
         topPad: 1.5,
         wide,
       };
+    default:
+      return {
+        widthRatio: 0.9,
+        barH: format === "EAN13" ? 30 : 26,
+        bottomPad: 1.75,
+        gap: 1.5,
+        topPad: 0.75,
+        wide,
+      };
   }
 }
 
-// Gumming printers spread ink — keep strokes light (Terry Corel used ~1.4;
-// that prints heavy on gumming stock). Uniform hairline for outer + grid.
-const OUTER_BORDER = 0.55;
-const INNER_BORDER = 0.55;
+// 203 DPI: 1 device pixel ≈ 0.355pt. Inner hairline ≈ 0.8px (snaps to 1px);
+// outer is a full device pixel so the die-cut edge stays visible without a heavy box.
+const OUTER_BORDER = 0.35;
+const INNER_BORDER = 0.28;
 const LABEL_RATIO = 0.363; // matches Terry Blue column split (~92.8 / 255.8)
+
+/** 3×4-only stroke weights. Other sizes keep OUTER_BORDER / INNER_BORDER. */
+function borderSpec(labelSize: LabelSize) {
+  if (labelSize === "3x4") return { outer: 0.5, inner: 0.4 };
+  return { outer: OUTER_BORDER, inner: INNER_BORDER };
+}
+
+function usesExpandedTable(labelSize: LabelSize) {
+  return isThermalSquare(labelSize) || labelSize === "3x4";
+}
 
 function pdfSafe(text: string) {
   return text
@@ -399,34 +590,47 @@ function strokeOuter(
   y: number,
   w: number,
   h: number,
+  thickness = OUTER_BORDER,
 ) {
   // pdf-lib centers the stroke on the path — inset by half so the full
   // top/side lines stay on the page (avoids an "open" top box when clipped).
-  const inset = OUTER_BORDER / 2;
+  const inset = thickness / 2;
   page.drawRectangle({
     x: x + inset,
     y: y + inset,
-    width: Math.max(1, w - OUTER_BORDER),
-    height: Math.max(1, h - OUTER_BORDER),
+    width: Math.max(1, w - thickness),
+    height: Math.max(1, h - thickness),
     borderColor: BLACK,
-    borderWidth: OUTER_BORDER,
+    borderWidth: thickness,
   });
 }
 
-function hLine(page: PDFPage, x1: number, x2: number, y: number) {
+function hLine(
+  page: PDFPage,
+  x1: number,
+  x2: number,
+  y: number,
+  thickness = INNER_BORDER,
+) {
   page.drawLine({
     start: { x: x1, y },
     end: { x: x2, y },
-    thickness: INNER_BORDER,
+    thickness,
     color: BLACK,
   });
 }
 
-function vLine(page: PDFPage, x: number, y1: number, y2: number) {
+function vLine(
+  page: PDFPage,
+  x: number,
+  y1: number,
+  y2: number,
+  thickness = INNER_BORDER,
+) {
   page.drawLine({
     start: { x, y: y1 },
     end: { x, y: y2 },
-    thickness: INNER_BORDER,
+    thickness,
     color: BLACK,
   });
 }
@@ -465,8 +669,9 @@ async function drawBarcodeInArea(
     textY = yBottom + bottomPad + lift;
     imageY = textY + eanSize + gap;
     if (imageY + drawH > yTop - topPad) {
-      drawH = Math.max(barH * 0.55, yTop - topPad - imageY);
+      drawH = Math.max(12, yTop - topPad - imageY);
     }
+    drawH = Math.max(12, drawH);
   } else {
     const textH = eanSize + 5;
     const innerPad = 2.5;
@@ -494,13 +699,14 @@ async function drawBarcodeInArea(
   });
   const safe = pdfSafe(value);
   const textW = font.widthOfTextAtSize(safe, eanSize);
-  page.drawText(safe, {
-    x: x + (width - textW) / 2,
-    y: textY,
-    size: eanSize,
+  drawSolidBlackText(
+    page,
+    safe,
     font,
-    color: BLACK,
-  });
+    eanSize,
+    x + (width - textW) / 2,
+    textY,
+  );
 }
 
 function wrapText(
@@ -632,6 +838,118 @@ function pairRowNeed(
   return { height, lines };
 }
 
+/** Largest table-body pt size that fits title (fixed) + wrapped specials + 1-line fields + barcode. */
+function pickUniformPt(args: {
+  usableH: number;
+  tableW: number;
+  marketplace: "Alpha" | "FBF";
+  labelSize: LabelSize;
+  title: string;
+  fieldPairs: Array<{ label: string; value: string }>;
+  specials: Array<{ label: string; value: string }>;
+  measure: (text: string, size: number) => number;
+  unitScale?: number;
+  barcodeMin: number;
+  titlePt: number;
+  pad: number;
+  line: number;
+  maxPt?: number;
+  minPt?: number;
+}): number {
+  const unitScale = args.unitScale ?? 1;
+  const maxPt = args.maxPt ?? 9;
+  const minPt = args.minPt ?? 5.5;
+  const pad = args.pad;
+  const line = args.line;
+  const labelRatio = labelColumnRatio(args.labelSize, args.marketplace);
+  const labelW = args.tableW * labelRatio;
+  const valueW = args.tableW - labelW;
+  const padY = Math.max(0.5 * unitScale, pad * 0.7);
+
+  for (let size = maxPt; size >= minPt - 0.001; size -= 0.25) {
+    const titleH = pairRowNeed(
+      args.title,
+      "",
+      args.titlePt,
+      args.tableW,
+      args.tableW,
+      pad,
+      padY,
+      line,
+      args.measure,
+      1.25 * unitScale,
+    ).height;
+    let specialH = 0;
+    for (const block of args.specials) {
+      specialH += pairRowNeed(
+        block.label,
+        block.value,
+        size,
+        labelW,
+        valueW,
+        pad,
+        padY,
+        line,
+        args.measure,
+        1.6 * unitScale,
+      ).height;
+    }
+    const fieldHeights = args.fieldPairs.map(
+      (pair) =>
+        pairRowNeed(
+          pair.label,
+          pair.value,
+          size,
+          labelW,
+          valueW,
+          pad,
+          padY,
+          line,
+          args.measure,
+          1.25 * unitScale,
+        ).height,
+    );
+    const fieldH =
+      Math.max(0, ...fieldHeights) * Math.max(1, args.fieldPairs.length);
+    if (titleH + specialH + fieldH + args.barcodeMin <= args.usableH + 0.4) {
+      return size;
+    }
+  }
+  return minPt;
+}
+
+function fitThermalSquareBody<
+  T extends { title: number; body: number; small: number; pad: number; line: number },
+>(
+  labelSize: LabelSize,
+  type: T,
+  args: {
+    usableH: number;
+    tableW: number;
+    marketplace: "Alpha" | "FBF";
+    title: string;
+    fieldPairs: Array<{ label: string; value: string }>;
+    specials: Array<{ label: string; value: string }>;
+    measure: (text: string, size: number) => number;
+    unitScale?: number;
+  },
+): T {
+  if (!isThermalSquare(labelSize)) return type;
+  const unitScale = args.unitScale ?? 1;
+  const body = pickUniformPt({
+    ...args,
+    labelSize,
+    unitScale,
+    barcodeMin: barcodeHeightSlot(labelSize, unitScale).min,
+    titlePt: type.title,
+    pad: type.pad,
+    line: type.line,
+    maxPt: type.body,
+    minPt: thermalTextFloor(labelSize) * unitScale,
+  });
+  return { ...type, body, small: body };
+}
+
 export type HeightSlot = {
   key: string;
   min: number;
@@ -641,15 +959,15 @@ export type HeightSlot = {
 };
 
 /**
- * Uniform field rows + barcode-first leftover space.
- * - All `field-*` rows share one equal height (no one tall/odd blank cell).
- * - Company/address stay tight to content.
- * - Extra space goes to the barcode (main purpose of the sticker).
+ * Uniform field rows. On square thermal labels leftover height goes into
+ * those rows (padding), not the barcode band.
  */
 export function allocateRowHeights(
   usableH: number,
   slots: HeightSlot[],
+  options?: { spareTo?: "barcode" | "fields"; honorFieldMins?: boolean },
 ): Record<string, number> {
+  const spareTo = options?.spareTo ?? "barcode";
   const bi = slots.findIndex((s) => s.key === "barcode");
   const fieldIdx = slots
     .map((s, i) => (s.key.startsWith("field-") ? i : -1))
@@ -674,7 +992,7 @@ export function allocateRowHeights(
       s.key === "title" ? Math.max(s.min, s.prefer) : s.min;
   }
 
-  // Lock barcode prefer first so scanning area isn't starved by table padding.
+  // Lock barcode at prefer so scanning area is stable — not inflated by leftover.
   if (bi >= 0) {
     heights[bi] = Math.max(slots[bi].min, slots[bi].prefer);
   }
@@ -683,15 +1001,16 @@ export function allocateRowHeights(
   const nonFieldSum = () =>
     heights.reduce((a, h, i) => (fieldIdx.includes(i) ? a : a + h), 0);
 
-  // All data fields share one equal height from whatever is left.
+  // All data fields share leftover space. Do not force them to a content
+  // floor that overflows the sticker and clips address / customer care.
   if (fieldIdx.length) {
-    const contentFloor = Math.max(...fieldIdx.map((i) => slots[i].min));
     const room = usableH - nonFieldSum();
-    const equal = Math.max(contentFloor, room / fieldIdx.length);
-    for (const i of fieldIdx) heights[i] = equal;
+    const each = room / fieldIdx.length;
+    for (const i of fieldIdx) heights[i] = Math.max(0, each);
   }
 
-  // If overfull: shrink barcode toward min, then lower every field row together.
+  // If overfull: shrink barcode toward min, then field rows. Never shrink
+  // address / customer-care / title — those hold the full sheet text.
   let over = sum() - usableH;
   if (over > 0.05 && bi >= 0) {
     const take = Math.min(over, heights[bi] - slots[bi].min);
@@ -699,36 +1018,58 @@ export function allocateRowHeights(
     over -= take;
   }
   if (over > 0.05 && fieldIdx.length) {
-    const perField = over / fieldIdx.length;
-    const lowestOwnMin = Math.min(...fieldIdx.map((i) => slots[i].min));
-    const next = Math.max(lowestOwnMin, heights[fieldIdx[0]] - perField);
-    for (const i of fieldIdx) heights[i] = next;
-    over = sum() - usableH;
-  }
-  // Still over: scale all non-barcode content evenly; keep barcode at min.
-  if (over > 0.05) {
-    if (bi >= 0) heights[bi] = slots[bi].min;
-    const rest = Math.max(1, usableH - (bi >= 0 ? heights[bi] : 0));
-    const contentIdx = slots.map((_, i) => i).filter((i) => i !== bi);
-    const contentSum = contentIdx.reduce((a, i) => a + heights[i], 0);
-    const factor = contentSum > 0 ? rest / contentSum : 1;
-    for (const i of contentIdx) heights[i] *= factor;
+    const nonField = sum() - fieldIdx.reduce((a, i) => a + heights[i], 0);
+    const room = Math.max(0, usableH - nonField);
+    const each = room / fieldIdx.length;
+    for (const i of fieldIdx) heights[i] = Math.max(0, each);
   }
 
-  // Underfull: all spare → barcode (never inflate one random data cell).
   const spare = usableH - sum();
   if (spare > 0.05) {
-    if (bi >= 0) heights[bi] += spare;
-    else if (fieldIdx.length) {
+    const giveToFields = spareTo === "fields" && fieldIdx.length;
+    if (giveToFields) {
+      const each = spare / fieldIdx.length;
+      for (const i of fieldIdx) heights[i] += each;
+    } else if (bi >= 0) {
+      heights[bi] += spare;
+    } else if (fieldIdx.length) {
       const each = spare / fieldIdx.length;
       for (const i of fieldIdx) heights[i] += each;
     }
   }
 
+  // 3×4: wrapped values (e.g. MRP + taxes) keep their 2-line floor by
+  // borrowing height from 1-line siblings — barcode/specials stay put.
+  if (options?.honorFieldMins && fieldIdx.length) {
+    const need = fieldIdx.map((i) => Math.max(0, slots[i].min - heights[i]));
+    const deficit = need.reduce((a, d) => a + d, 0);
+    const surplusIdx = fieldIdx.filter((i) => heights[i] > slots[i].min + 0.05);
+    const surplus = surplusIdx.reduce(
+      (a, i) => a + (heights[i] - slots[i].min),
+      0,
+    );
+    const take = Math.min(deficit, surplus);
+    if (take > 0.05 && surplus > 0.05) {
+      for (const i of surplusIdx) {
+        heights[i] -= ((heights[i] - slots[i].min) / surplus) * take;
+      }
+      for (let n = 0; n < fieldIdx.length; n++) {
+        if (need[n] <= 0) continue;
+        heights[fieldIdx[n]] += (need[n] / deficit) * take;
+      }
+    }
+  }
+
   const drift = usableH - sum();
   if (Math.abs(drift) > 0.05) {
-    const idx = bi >= 0 ? bi : heights.length - 1;
-    heights[idx] = Math.max(slots[idx].min * 0.5, heights[idx] + drift);
+    if (spareTo === "fields" && fieldIdx.length) {
+      const each = drift / fieldIdx.length;
+      for (const i of fieldIdx) heights[i] = Math.max(0, heights[i] + each);
+    } else {
+      const idx = bi >= 0 ? bi : heights.length - 1;
+      const floor = bi >= 0 ? slots[bi].min : slots[idx].min * 0.5;
+      heights[idx] = Math.max(floor, heights[idx] + drift);
+    }
   }
 
   const out: Record<string, number> = {};
@@ -740,18 +1081,22 @@ export function allocateRowHeights(
 
 function barcodeHeightSlot(labelSize: LabelSize, scale = 1): HeightSlot {
   const S = (n: number) => n * scale;
-  // Prefer tall barcodes — scanning is the label's main job.
+  if (isThermalSquare(labelSize)) {
+    const k = squareScale(labelSize);
+    // Shorter band than the old 56/64pt 3×3 slot; bars stay scannable.
+    return { key: "barcode", min: S(46 * k), prefer: S(48 * k), keep: 0 };
+  }
   switch (labelSize) {
     case "3x5":
       return { key: "barcode", min: S(76), prefer: S(98), keep: 0 };
     case "3x4":
-      return { key: "barcode", min: S(60), prefer: S(80), keep: 0 };
-    case "3x3":
-      return { key: "barcode", min: S(42), prefer: S(54), keep: 0 };
+      return { key: "barcode", min: S(48), prefer: S(51), keep: 0 };
     case "2x3":
       return { key: "barcode", min: S(48), prefer: S(64), keep: 0 };
     case "2x2":
       return { key: "barcode", min: S(32), prefer: S(42), keep: 0 };
+    default:
+      return { key: "barcode", min: S(46), prefer: S(48), keep: 0 };
   }
 }
 
@@ -846,6 +1191,11 @@ function buildFbfSmartLayout(
     ),
     4,
   );
+  if (labelSize === "3x4") {
+    const floor = fbfBandHeights("3x4").companyH * unitScale;
+    companySlot.min = Math.max(companySlot.min, floor);
+    companySlot.prefer = Math.max(companySlot.prefer, floor);
+  }
   const titleNeed = pairRowNeed(
     title,
     "",
@@ -869,7 +1219,10 @@ function buildFbfSmartLayout(
     barcodeHeightSlot(labelSize, unitScale),
   ];
 
-  const allocated = allocateRowHeights(usableH, slots);
+  const allocated = allocateRowHeights(usableH, slots, {
+    spareTo: usesExpandedTable(labelSize) ? "fields" : "barcode",
+    honorFieldMins: labelSize === "3x4",
+  });
   return {
     title: allocated.title,
     fields: fieldPairs.map((_, i) => allocated[`field-${i}`]),
@@ -946,6 +1299,15 @@ function buildAlphaSmartLayout(
     ),
     3,
   );
+  if (labelSize === "3x4") {
+    const bands = alphaBandHeights("3x4");
+    const addressFloor = bands.addressH * unitScale;
+    const careFloor = bands.complaintsH * unitScale;
+    addressSlot.min = Math.max(addressSlot.min, addressFloor);
+    addressSlot.prefer = Math.max(addressSlot.prefer, addressFloor);
+    complaintsSlot.min = Math.max(complaintsSlot.min, careFloor);
+    complaintsSlot.prefer = Math.max(complaintsSlot.prefer, careFloor);
+  }
 
   const slots: HeightSlot[] = [
     titleHeightSlot(labelSize, "Alpha", unitScale),
@@ -955,7 +1317,10 @@ function buildAlphaSmartLayout(
     barcodeHeightSlot(labelSize, unitScale),
   ];
 
-  const allocated = allocateRowHeights(usableH, slots);
+  const allocated = allocateRowHeights(usableH, slots, {
+    spareTo: usesExpandedTable(labelSize) ? "fields" : "barcode",
+    honorFieldMins: labelSize === "3x4",
+  });
   return {
     title: allocated.title,
     fields: fieldPairs.map((_, i) => allocated[`field-${i}`]),
@@ -967,6 +1332,16 @@ function buildAlphaSmartLayout(
 /** CSS type tokens matching globals.css --lt-* (values in px at 96dpi). */
 function cssTypeScale(labelSize: LabelSize) {
   const pt = (n: number) => n * (96 / 72);
+  if (isThermalSquare(labelSize)) {
+    const s = sizeScale(labelSize);
+    return {
+      title: pt(s.title),
+      body: pt(s.body),
+      small: pt(s.small),
+      pad: pt(s.pad),
+      line: s.line,
+    };
+  }
   switch (labelSize) {
     case "2x2":
       return {
@@ -984,22 +1359,16 @@ function cssTypeScale(labelSize: LabelSize) {
         pad: pt(1.4),
         line: 1.1,
       };
-    case "3x3":
+    case "3x4": {
+      const s = sizeScale("3x4");
       return {
-        title: pt(6),
-        body: pt(5),
-        small: pt(4.6),
-        pad: pt(1.5),
-        line: 1.1,
+        title: pt(s.title),
+        body: pt(s.body),
+        small: pt(s.small),
+        pad: pt(s.pad),
+        line: s.line,
       };
-    case "3x4":
-      return {
-        title: pt(6.5),
-        body: pt(5.6),
-        small: pt(5.1),
-        pad: pt(1.7),
-        line: 1.1,
-      };
+    }
     case "3x5":
       return {
         title: pt(7),
@@ -1007,6 +1376,14 @@ function cssTypeScale(labelSize: LabelSize) {
         small: pt(6),
         pad: pt(2),
         line: 1.12,
+      };
+    default:
+      return {
+        title: pt(9),
+        body: pt(8.5),
+        small: pt(8.5),
+        pad: pt(1.2),
+        line: 1.18,
       };
   }
 }
@@ -1037,8 +1414,9 @@ export function computeSmartLabelLayoutPx(
   const border = 2;
   const tableW = wIn * 96 - border;
   const usableH = hIn * 96 - border;
-  const type = cssTypeScale(labelSize);
+  let type = cssTypeScale(labelSize);
   const measure = approxTextWidth;
+  const unitScale = 96 / 72;
 
   if (marketplace === "FBF") {
     const companyLabel = FBF_COMPANY_LABEL;
@@ -1054,17 +1432,31 @@ export function computeSmartLabelLayoutPx(
       label: field.label,
       value: fieldValue(product.payload, ...field.keys),
     }));
+    const titleText =
+      fieldValue(product.payload, "Category") || product.fsn;
+    if (isThermalSquare(labelSize)) {
+      type = fitThermalSquareBody(labelSize, type, {
+        usableH,
+        tableW,
+        marketplace: "FBF",
+        title: titleText,
+        fieldPairs,
+        specials: [{ label: companyLabel, value: companyValue }],
+        measure,
+        unitScale,
+      });
+    }
     return buildFbfSmartLayout(
       labelSize,
       tableW,
       usableH,
-      fieldValue(product.payload, "Category") || product.fsn,
+      titleText,
       fieldPairs,
       companyLabel,
       companyValue,
       measure,
       type,
-      96 / 72,
+      unitScale,
     );
   }
 
@@ -1075,7 +1467,7 @@ export function computeSmartLabelLayoutPx(
   const marketed = fieldValue(product.payload, "Marketed By / Imported By");
   const manufactured = fieldValue(product.payload, "Manufactured By ") || "-";
   const addressLabel = marketedCombined
-    ? "Marketed & Manufactured By"
+    ? "Marketed &\nManufactured By"
     : "Marketed By / Imported By\nManufactured By";
   const addressValue = marketedCombined
     ? marketedCombined
@@ -1097,6 +1489,21 @@ export function computeSmartLabelLayoutPx(
     label: field.label,
     value: fieldValue(product.payload, ...field.keys),
   }));
+  if (isThermalSquare(labelSize)) {
+    type = fitThermalSquareBody(labelSize, type, {
+      usableH,
+      tableW,
+      marketplace: "Alpha",
+      title: product.fsn,
+      fieldPairs,
+      specials: [
+        { label: addressLabel, value: addressValue },
+        { label: careLabel, value: careValue },
+      ],
+      measure,
+      unitScale,
+    });
+  }
   return buildAlphaSmartLayout(
     labelSize,
     tableW,
@@ -1171,18 +1578,21 @@ function drawCellText(
   pad: number,
   align: "left" | "center" = "left",
   lineRatio = 1.08,
+  minSize = 2.8,
+  alwaysShow = false,
 ) {
   const raw = pdfSafe(text);
   if (!raw.trim()) return;
 
-  // Keep glyphs clear of hairlines on every side (critical on 2x2 / 2x3 / 3x3).
-  const insetX = Math.max(0.7, Math.min(pad, width * 0.06));
-  const insetY = Math.max(0.55, Math.min(pad, height * 0.16));
-  const maxWidth = Math.max(3, width - insetX * 2);
-  const size = Math.min(
-    fontSize,
-    Math.max(2.8, (height - insetY * 2) / Math.max(lineRatio, 1.02)),
-  );
+  // Same requested size in every cell. Wrap onto more lines; do not mix 9pt
+  // title with 5pt field rows. Row height must already fit the wrapped lines.
+  const insetX = Math.max(0.6, Math.min(pad, width * 0.05));
+  const shiftX = alwaysShow && align === "left" ? 1 : 0;
+  const insetY = alwaysShow
+    ? Math.max(0.2, Math.min(pad * 0.25, height * 0.06))
+    : Math.max(0.35, Math.min(pad * 0.45, height * 0.1));
+  const maxWidth = Math.max(3, width - insetX * 2 - shiftX);
+  const size = fontSize;
   const paragraphs = raw
     .split(/\n/)
     .map((p) => p.replace(/\s+/g, " ").trim())
@@ -1195,24 +1605,28 @@ function drawCellText(
   const lineHeight = size * lineRatio;
   const maxLines = Math.max(1, Math.floor((height - insetY * 2) / lineHeight));
   const visible = lines.slice(0, maxLines);
-  // Baseline sits just under the top inset so caps clear the top border.
-  let y = yTop - insetY - size * 0.92;
-  const minY = yTop - height + insetY * 0.35;
+  if (!visible.length) return;
+  const cap = alwaysShow ? size * 0.78 : size * 0.92;
+  const descender = alwaysShow ? size * 0.12 : size * 0.22;
+  const contentH = cap + descender + (visible.length - 1) * lineHeight;
+  const extra = Math.max(0, height - contentH);
+  let y = yTop - insetY - extra / 2 - cap;
+  const minY = yTop - height + (alwaysShow ? size * 0.08 : insetY * 0.35);
+  if (alwaysShow) {
+    const maxY = yTop - insetY - cap;
+    y = Math.min(maxY, Math.max(minY, y));
+  }
+  let first = true;
   for (const line of visible) {
-    if (y < minY) break;
+    if (!first && y < minY) break;
+    if (first && y < minY) y = minY;
+    first = false;
     const lineW = font.widthOfTextAtSize(line, size);
     const tx =
       align === "center"
         ? x + Math.max(insetX, (width - lineW) / 2)
-        : x + insetX;
-    page.drawText(line, {
-      x: tx,
-      y,
-      size,
-      font,
-      color: BLACK,
-      maxWidth,
-    });
+        : x + insetX + shiftX;
+    drawSolidBlackText(page, line, font, size, tx, y);
     y -= lineHeight;
   }
 }
@@ -1230,6 +1644,8 @@ function drawRow(
   labelRatio: number,
   pad: number,
   lineRatio = 1.08,
+  minSize = 2.8,
+  alwaysShow = false,
 ) {
   const labelW = width * labelRatio;
   const valueW = width - labelW;
@@ -1245,6 +1661,8 @@ function drawRow(
     pad,
     "left",
     lineRatio,
+    minSize,
+    alwaysShow,
   );
   drawCellText(
     page,
@@ -1258,6 +1676,8 @@ function drawRow(
     pad,
     "left",
     lineRatio,
+    minSize,
+    alwaysShow,
   );
 }
 
@@ -1277,10 +1697,14 @@ function paintTerryGrid(
   tableTop: number,
   rows: GridRow[],
   labelRatio: number,
+  borders: { outer: number; inner: number } = {
+    outer: OUTER_BORDER,
+    inner: INNER_BORDER,
+  },
 ) {
   const tableH = rows.reduce((sum, row) => sum + row.height, 0);
   const tableBottom = tableTop - tableH;
-  strokeOuter(page, margin, tableBottom, tableW, tableH);
+  strokeOuter(page, margin, tableBottom, tableW, tableH, borders.outer);
 
   let y = tableTop;
   const labelX = margin + tableW * labelRatio;
@@ -1288,8 +1712,8 @@ function paintTerryGrid(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const nextY = y - row.height;
-    if (i > 0) hLine(page, margin, margin + tableW, y);
-    if (row.kind === "pair") vLine(page, labelX, nextY, y);
+    if (i > 0) hLine(page, margin, margin + tableW, y, borders.inner);
+    if (row.kind === "pair") vLine(page, labelX, nextY, y, borders.inner);
     y = nextY;
   }
   return tableBottom;
@@ -1304,7 +1728,7 @@ async function drawAlphaProduct(
   barcodeSource: BarcodeSource,
 ) {
   const { width, height } = PAGE_SIZES[labelSize];
-  const s = sizeScale(labelSize);
+  let s = sizeScale(labelSize);
   const margin = pageMargin(labelSize);
   const tableW = width - margin * 2;
   const tableTop = height - margin;
@@ -1319,7 +1743,7 @@ async function drawAlphaProduct(
   const marketed = fieldValue(product.payload, "Marketed By / Imported By");
   const manufactured = fieldValue(product.payload, "Manufactured By ") || "-";
   const addressLabel = marketedCombined
-    ? "Marketed & Manufactured By"
+    ? "Marketed &\nManufactured By"
     : "Marketed By / Imported By\nManufactured By";
   const addressValue = marketedCombined
     ? marketedCombined
@@ -1342,6 +1766,20 @@ async function drawAlphaProduct(
     label: field.label,
     value: fieldValue(product.payload, ...field.keys),
   }));
+  if (isThermalSquare(labelSize)) {
+    s = fitThermalSquareBody(labelSize, s, {
+      usableH,
+      tableW,
+      marketplace: "Alpha",
+      title: product.fsn || "",
+      fieldPairs,
+      specials: [
+        { label: addressLabel, value: addressValue },
+        { label: careLabel, value: careValue },
+      ],
+      measure,
+    });
+  }
   const layout = buildAlphaSmartLayout(
     labelSize,
     tableW,
@@ -1387,8 +1825,18 @@ async function drawAlphaProduct(
     { height: layout.barcode, kind: "barcode" },
   ];
 
-  paintTerryGrid(page, margin, tableW, tableTop, rows, labelRatio);
+  paintTerryGrid(
+    page,
+    margin,
+    tableW,
+    tableTop,
+    rows,
+    labelRatio,
+    borderSpec(labelSize),
+  );
 
+  const minSize = thermalTextFloor(labelSize);
+  const alwaysShow = labelSize === "3x4";
   let y = tableTop;
   for (const row of rows) {
     if (row.kind === "title" && row.centerTitle != null) {
@@ -1404,6 +1852,8 @@ async function drawAlphaProduct(
         s.pad,
         "center",
         s.line,
+        minSize,
+        alwaysShow,
       );
     } else if (row.kind === "pair") {
       drawRow(
@@ -1419,6 +1869,8 @@ async function drawAlphaProduct(
         labelRatio,
         s.pad,
         s.line,
+        minSize,
+        alwaysShow,
       );
     } else if (row.kind === "barcode") {
       const barcode = resolveProductBarcode(product, barcodeSource);
@@ -1448,7 +1900,7 @@ async function drawFbfProduct(
   barcodeSource: BarcodeSource,
 ) {
   const { width, height } = PAGE_SIZES[labelSize];
-  const s = sizeScale(labelSize);
+  let s = sizeScale(labelSize);
   const margin = pageMargin(labelSize);
   const tableW = width - margin * 2;
   const tableTop = height - margin;
@@ -1472,6 +1924,17 @@ async function drawFbfProduct(
   }));
   const titleText =
     fieldValue(product.payload, "Category") || product.fsn || "";
+  if (isThermalSquare(labelSize)) {
+    s = fitThermalSquareBody(labelSize, s, {
+      usableH,
+      tableW,
+      marketplace: "FBF",
+      title: titleText,
+      fieldPairs,
+      specials: [{ label: companyLabel, value: company }],
+      measure,
+    });
+  }
   const layout = buildFbfSmartLayout(
     labelSize,
     tableW,
@@ -1513,8 +1976,18 @@ async function drawFbfProduct(
     { height: layout.barcode, kind: "barcode" },
   ];
 
-  paintTerryGrid(page, margin, tableW, tableTop, rows, labelRatio);
+  paintTerryGrid(
+    page,
+    margin,
+    tableW,
+    tableTop,
+    rows,
+    labelRatio,
+    borderSpec(labelSize),
+  );
 
+  const minSize = thermalTextFloor(labelSize);
+  const alwaysShow = labelSize === "3x4";
   let y = tableTop;
   for (const row of rows) {
     if (row.kind === "title" && row.centerTitle != null) {
@@ -1530,6 +2003,8 @@ async function drawFbfProduct(
         s.pad,
         "center",
         s.line,
+        minSize,
+        alwaysShow,
       );
     } else if (row.kind === "pair") {
       drawRow(
@@ -1545,6 +2020,8 @@ async function drawFbfProduct(
         labelRatio,
         s.pad,
         s.line,
+        minSize,
+        alwaysShow,
       );
     } else if (row.kind === "barcode") {
       const barcode = resolveProductBarcode(product, barcodeSource);
@@ -1597,6 +2074,8 @@ async function drawAlphaPack(
       rowH,
       0.38,
       s.pad,
+      s.line,
+      thermalTextFloor(labelSize),
     );
     y -= rowH;
   }
@@ -1642,6 +2121,7 @@ async function drawFbfPack(
   const colW = [tableW * 0.14, tableW * 0.36, tableW * 0.36, tableW * 0.14];
   const headers = ["Box No.", "SKU", "FSN", "QTY."];
   const headerH = 14;
+  const minSize = thermalTextFloor(labelSize);
   let x = margin;
   for (let i = 0; i < headers.length; i++) {
     drawRect(page, x, y - headerH, colW[i], headerH);
@@ -1655,6 +2135,9 @@ async function drawFbfPack(
       colW[i],
       headerH,
       1.5,
+      "left",
+      s.line,
+      minSize,
     );
     x += colW[i];
   }
@@ -1697,6 +2180,9 @@ async function drawFbfPack(
         widths[i],
         rowH,
         1.5,
+        "left",
+        s.line,
+        minSize,
       );
       cx += widths[i];
     }
@@ -1722,8 +2208,7 @@ export async function buildProductsPdf(
 ): Promise<Uint8Array> {
   if (!products.length) throw new Error("No products selected for PDF.");
   const pdf = await PDFDocument.create();
-  // Regular Helvetica only — Bold fills in on gumming sticker print.
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const font = await embedLabelFont(pdf);
   preferActualSizePrint(pdf);
   const size = PAGE_SIZES[labelSize];
 
@@ -1747,7 +2232,7 @@ export async function buildPackagingPdf(
 ): Promise<Uint8Array> {
   if (!indexes.length) throw new Error("No packaging labels selected for PDF.");
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const font = await embedLabelFont(pdf);
   preferActualSizePrint(pdf);
   const size = PAGE_SIZES[labelSize];
 

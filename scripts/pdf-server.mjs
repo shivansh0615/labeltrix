@@ -35,6 +35,22 @@ const sizes = {
     widthPoints: 216,
     heightPoints: 216,
   },
+  "4x4": {
+    width: "4in",
+    height: "4in",
+    widthPixels: 384,
+    heightPixels: 384,
+    widthPoints: 288,
+    heightPoints: 288,
+  },
+  "5x5": {
+    width: "5in",
+    height: "5in",
+    widthPixels: 480,
+    heightPixels: 480,
+    widthPoints: 360,
+    heightPoints: 360,
+  },
 };
 
 let browserPromise;

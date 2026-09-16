@@ -33,6 +33,9 @@ yarn-error.log*
 !.env.example
 .dev.vars
 
+# Windows/BarTender Arial is copied locally; do not redistribute.
+/public/fonts/*.ttf
+
 
 # vercel
 .vercel

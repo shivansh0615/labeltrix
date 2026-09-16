@@ -475,9 +475,9 @@ article {
   margin: 16px auto 0;
   background: #fff;
   color: #000;
-  border: 0.75pt solid #000;
+  border: 0.4pt solid #000;
   box-sizing: border-box;
-  font-family: Helvetica, Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-weight: 400;
   box-shadow: 0 8px 24px #1c29451a;
   overflow: hidden;
@@ -499,6 +499,10 @@ article {
 .size-2x3 .fbfLabel,
 .size-3x3 .alphaLabel,
 .size-3x3 .fbfLabel,
+.size-4x4 .alphaLabel,
+.size-4x4 .fbfLabel,
+.size-5x5 .alphaLabel,
+.size-5x5 .fbfLabel,
 .size-3x4 .alphaLabel,
 .size-3x4 .fbfLabel,
 .size-3x5 .alphaLabel,
@@ -1076,31 +1080,31 @@ article {
   flex: 0 0 auto;
 }
 .size-3x4 .labelTitle {
-  height: 20px;
+  height: 27px;
   display: grid;
   place-items: center;
 }
 .size-3x4 .labelRow {
-  height: 13px;
-  min-height: 13px;
-  font-size: 8.6px;
-  line-height: 1;
+  height: 16px;
+  min-height: 16px;
+  font-size: 9pt;
+  line-height: 1.18;
 }
 .size-3x4 .addressRow {
-  height: 49px;
-  min-height: 49px;
-  font-size: 7px;
-  line-height: 1.1;
+  height: 48px;
+  min-height: 48px;
+  font-size: 8.8pt;
+  line-height: 1.18;
 }
 .size-3x4 .complaints {
-  height: 34px;
-  min-height: 34px;
-  font-size: 7.8px;
-  line-height: 1.1;
+  height: 53px;
+  min-height: 53px;
+  font-size: 8.8pt;
+  line-height: 1.18;
 }
 .size-3x4 .company {
-  height: 42px;
-  min-height: 42px;
+  height: 59px;
+  min-height: 59px;
 }
 .size-3x4 .barcodeTitle {
   height: 14px;
@@ -2750,6 +2754,14 @@ input:focus-visible {
   --physical-label-width: 3in;
   --physical-label-height: 3in;
 }
+.size-4x4 {
+  --physical-label-width: 4in;
+  --physical-label-height: 4in;
+}
+.size-5x5 {
+  --physical-label-width: 5in;
+  --physical-label-height: 5in;
+}
 .size-2x2 .label,
 .size-2x2 .packLabel,
 .size-2x3 .label,
@@ -2757,7 +2769,11 @@ input:focus-visible {
 .size-3x4 .label,
 .size-3x4 .packLabel,
 .size-3x3 .label,
-.size-3x3 .packLabel {
+.size-3x3 .packLabel,
+.size-4x4 .label,
+.size-4x4 .packLabel,
+.size-5x5 .label,
+.size-5x5 .packLabel {
   width: var(--physical-label-width);
   height: var(--physical-label-height);
   min-height: var(--physical-label-height);
@@ -2915,7 +2931,11 @@ input:focus-visible {
   .size-3x4 .preview .label,
   .size-3x4 .preview .packLabel,
   .size-3x3 .preview .label,
-  .size-3x3 .preview .packLabel {
+  .size-3x3 .preview .packLabel,
+  .size-4x4 .preview .label,
+  .size-4x4 .preview .packLabel,
+  .size-5x5 .preview .label,
+  .size-5x5 .preview .packLabel {
     width: var(--physical-label-width);
     height: var(--physical-label-height);
     min-height: var(--physical-label-height);
@@ -3042,7 +3062,11 @@ input:focus-visible {
   .size-3x4 .label,
   .size-3x4 .packLabel,
   .size-3x3 .label,
-  .size-3x3 .packLabel {
+  .size-3x3 .packLabel,
+  .size-4x4 .label,
+  .size-4x4 .packLabel,
+  .size-5x5 .label,
+  .size-5x5 .packLabel {
     width: var(--physical-label-width) !important;
     height: var(--physical-label-height) !important;
     min-height: var(--physical-label-height) !important;
@@ -3490,30 +3514,56 @@ input:focus-visible {
   --lt-special: 1.7;
 }
 .size-3x3 {
-  --lt-title: 6pt;
-  --lt-body: 5pt;
-  --lt-small: 4.6pt;
-  --lt-pad-y: 0.5px;
+  --lt-title: 11pt;
+  --lt-body: 8.5pt;
+  --lt-small: 8.5pt;
+  --lt-pad-y: 1.6px;
   --lt-pad-x: 2.5px;
   --lt-barcode: 64px;
-  --lt-bar-img: 42px;
-  --lt-ean: 7.5pt;
+  --lt-bar-img: 37px;
+  --lt-ean: 8.5pt;
   --lt-col: 39% 61%;
-  --lt-title-h: 14px;
-  --lt-special: 1.8;
+  --lt-title-h: 24px;
+  --lt-special: 2.2;
+}
+.size-4x4 {
+  --lt-title: 14.67pt;
+  --lt-body: 11.33pt;
+  --lt-small: 11.33pt;
+  --lt-pad-y: 2.1px;
+  --lt-pad-x: 3.3px;
+  --lt-barcode: 85px;
+  --lt-bar-img: 50px;
+  --lt-ean: 11.33pt;
+  --lt-col: 39% 61%;
+  --lt-title-h: 29px;
+  --lt-special: 2.2;
+}
+.size-5x5 {
+  --lt-title: 18.33pt;
+  --lt-body: 14.17pt;
+  --lt-small: 14.17pt;
+  --lt-pad-y: 2.7px;
+  --lt-pad-x: 4.2px;
+  --lt-barcode: 107px;
+  --lt-bar-img: 62px;
+  --lt-ean: 14.17pt;
+  --lt-col: 39% 61%;
+  --lt-title-h: 35px;
+  --lt-special: 2.2;
 }
 .size-3x4 {
-  --lt-title: 6.5pt;
-  --lt-body: 5.6pt;
-  --lt-small: 5.1pt;
-  --lt-pad-y: 1px;
+  --lt-title: 10.5pt;
+  --lt-body: 9pt;
+  --lt-small: 8.8pt;
+  --lt-pad-y: 1.5px;
   --lt-pad-x: 3px;
-  --lt-barcode: 88px;
-  --lt-bar-img: 56px;
-  --lt-ean: 9pt;
-  --lt-col: 36.3% 63.7%;
-  --lt-title-h: 16px;
-  --lt-special: 2.1;
+  --lt-barcode: 68px;
+  --lt-bar-img: 43px;
+  --lt-ean: 11.5pt;
+  --lt-col: 39% 61%;
+  --lt-title-h: 24px;
+  --lt-special: 2.6;
 }
 .size-3x5 {
   --lt-title: 7pt;
@@ -3535,6 +3585,10 @@ input:focus-visible {
 .size-2x3 .label.fbfLabel,
 .size-3x3 .label.alphaLabel,
 .size-3x3 .label.fbfLabel,
+.size-4x4 .label.alphaLabel,
+.size-4x4 .label.fbfLabel,
+.size-5x5 .label.alphaLabel,
+.size-5x5 .label.fbfLabel,
 .size-3x4 .label.alphaLabel,
 .size-3x4 .label.fbfLabel,
 .size-3x5 .label.alphaLabel,
@@ -3548,6 +3602,8 @@ input:focus-visible {
 .size-2x2 .labelTitle,
 .size-2x3 .labelTitle,
 .size-3x3 .labelTitle,
+.size-4x4 .labelTitle,
+.size-5x5 .labelTitle,
 .size-3x4 .labelTitle,
 .size-3x5 .labelTitle {
   flex: 0 0 var(--lt-title-h) !important;
@@ -3567,6 +3623,8 @@ input:focus-visible {
 .size-2x2 .labelRow,
 .size-2x3 .labelRow,
 .size-3x3 .labelRow,
+.size-4x4 .labelRow,
+.size-5x5 .labelRow,
 .size-3x4 .labelRow,
 .size-3x5 .labelRow {
   flex: 1 1 0 !important;
@@ -3592,6 +3650,12 @@ input:focus-visible {
 .size-3x3 .labelRow.addressRow,
 .size-3x3 .labelRow.complaints,
 .size-3x3 .labelRow.company,
+.size-4x4 .labelRow.addressRow,
+.size-4x4 .labelRow.complaints,
+.size-4x4 .labelRow.company,
+.size-5x5 .labelRow.addressRow,
+.size-5x5 .labelRow.complaints,
+.size-5x5 .labelRow.company,
 .size-3x4 .labelRow.addressRow,
 .size-3x4 .labelRow.complaints,
 .size-3x4 .labelRow.company,
@@ -3609,6 +3673,10 @@ input:focus-visible {
 .size-2x3 .labelRow > span,
 .size-3x3 .labelRow > strong,
 .size-3x3 .labelRow > span,
+.size-4x4 .labelRow > strong,
+.size-4x4 .labelRow > span,
+.size-5x5 .labelRow > strong,
+.size-5x5 .labelRow > span,
 .size-3x4 .labelRow > strong,
 .size-3x4 .labelRow > span,
 .size-3x5 .labelRow > strong,
@@ -3650,6 +3718,18 @@ input:focus-visible {
 .size-3x3 .labelRow.complaints > span,
 .size-3x3 .labelRow.company > strong,
 .size-3x3 .labelRow.company > span,
+.size-4x4 .labelRow.addressRow > strong,
+.size-4x4 .labelRow.addressRow > span,
+.size-4x4 .labelRow.complaints > strong,
+.size-4x4 .labelRow.complaints > span,
+.size-4x4 .labelRow.company > strong,
+.size-4x4 .labelRow.company > span,
+.size-5x5 .labelRow.addressRow > strong,
+.size-5x5 .labelRow.addressRow > span,
+.size-5x5 .labelRow.complaints > strong,
+.size-5x5 .labelRow.complaints > span,
+.size-5x5 .labelRow.company > strong,
+.size-5x5 .labelRow.company > span,
 .size-3x4 .labelRow.addressRow > strong,
 .size-3x4 .labelRow.addressRow > span,
 .size-3x4 .labelRow.complaints > strong,
@@ -3672,6 +3752,10 @@ input:focus-visible {
 .size-2x3 .fbfLabel > .barcodeBox,
 .size-3x3 .label > .barcodeBox,
 .size-3x3 .fbfLabel > .barcodeBox,
+.size-4x4 .label > .barcodeBox,
+.size-4x4 .fbfLabel > .barcodeBox,
+.size-5x5 .label > .barcodeBox,
+.size-5x5 .fbfLabel > .barcodeBox,
 .size-3x4 .label > .barcodeBox,
 .size-3x4 .fbfLabel > .barcodeBox,
 .size-3x5 .label > .barcodeBox,
@@ -3692,6 +3776,8 @@ input:focus-visible {
 .size-2x2 .barcodeBox .barcodeImage,
 .size-2x3 .barcodeBox .barcodeImage,
 .size-3x3 .barcodeBox .barcodeImage,
+.size-4x4 .barcodeBox .barcodeImage,
+.size-5x5 .barcodeBox .barcodeImage,
 .size-3x4 .barcodeBox .barcodeImage,
 .size-3x5 .barcodeBox .barcodeImage {
   flex: 0 0 auto !important;
@@ -3704,6 +3790,8 @@ input:focus-visible {
 .size-2x2 .barcodeNumber,
 .size-2x3 .barcodeNumber,
 .size-3x3 .barcodeNumber,
+.size-4x4 .barcodeNumber,
+.size-5x5 .barcodeNumber,
 .size-3x4 .barcodeNumber,
 .size-3x5 .barcodeNumber {
   position: static !important;
@@ -3719,6 +3807,8 @@ input:focus-visible {
 .size-2x2 .barcodeTitle,
 .size-2x3 .barcodeTitle,
 .size-3x3 .barcodeTitle,
+.size-4x4 .barcodeTitle,
+.size-5x5 .barcodeTitle,
 .size-3x4 .barcodeTitle,
 .size-3x5 .barcodeTitle {
   display: none !important;
@@ -3812,4 +3902,124 @@ input:focus-visible {
   background: #faf9f7;
   font: 600 12px Helvetica, Arial, sans-serif;
   text-align: center;
+}
+
+/* TSC TTP-244 Pro @ 203 DPI — square product labels (HTML print fallback).
+   Download PDF is the primary path: vector Helvetica Regular, not a screenshot. */
+.size-3x3 .label,
+.size-4x4 .label,
+.size-5x5 .label {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: 400 !important;
+  border-width: 0.35pt !important;
+}
+.size-3x3 .labelTitle,
+.size-4x4 .labelTitle,
+.size-5x5 .labelTitle {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-title) !important;
+  font-weight: 400 !important;
+  line-height: 1.18 !important;
+  border-bottom-width: 0.28pt !important;
+}
+.size-3x3 .labelRow,
+.size-4x4 .labelRow,
+.size-5x5 .labelRow {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-body) !important;
+  font-weight: 400 !important;
+  line-height: 1.18 !important;
+  border-bottom-width: 0.28pt !important;
+}
+.size-3x3 .labelRow > strong,
+.size-3x3 .labelRow > span,
+.size-4x4 .labelRow > strong,
+.size-4x4 .labelRow > span,
+.size-5x5 .labelRow > strong,
+.size-5x5 .labelRow > span {
+  font-weight: 400 !important;
+}
+.size-3x3 .labelRow > strong,
+.size-4x4 .labelRow > strong,
+.size-5x5 .labelRow > strong {
+  border-right-width: 0.28pt !important;
+}
+.size-3x3 .labelRow.addressRow,
+.size-3x3 .labelRow.complaints,
+.size-3x3 .labelRow.company,
+.size-4x4 .labelRow.addressRow,
+.size-4x4 .labelRow.complaints,
+.size-4x4 .labelRow.company,
+.size-5x5 .labelRow.addressRow,
+.size-5x5 .labelRow.complaints,
+.size-5x5 .labelRow.company {
+  font-size: var(--lt-small) !important;
+  line-height: 1.18 !important;
+}
+.size-3x3 .barcodeNumber,
+.size-4x4 .barcodeNumber,
+.size-5x5 .barcodeNumber {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-ean) !important;
+  font-weight: 400 !important;
+}
+.size-3x3 .label.smartLayout .labelRow > strong,
+.size-3x3 .label.smartLayout .labelRow > span,
+.size-4x4 .label.smartLayout .labelRow > strong,
+.size-4x4 .label.smartLayout .labelRow > span,
+.size-5x5 .label.smartLayout .labelRow > strong,
+.size-5x5 .label.smartLayout .labelRow > span {
+  line-height: 1.18 !important;
+}
+.size-3x3 .label > .barcodeBox,
+.size-4x4 .label > .barcodeBox,
+.size-5x5 .label > .barcodeBox {
+  padding: 1px 3px !important;
+}
+
+/* TSC TTP-244 Pro @ 203 DPI — 3×4 product labels (HTML print fallback).
+   Independent of the 3×3 square layout. Download PDF is the primary path. */
+.size-3x4 .label {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-weight: 400 !important;
+  border-width: 0.5pt !important;
+}
+.size-3x4 .labelTitle {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-title) !important;
+  font-weight: 400 !important;
+  line-height: 1.18 !important;
+  border-bottom-width: 0.4pt !important;
+}
+.size-3x4 .labelRow {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-body) !important;
+  font-weight: 400 !important;
+  line-height: 1.18 !important;
+  border-bottom-width: 0.4pt !important;
+}
+.size-3x4 .labelRow > strong,
+.size-3x4 .labelRow > span {
+  font-weight: 400 !important;
+}
+.size-3x4 .labelRow > strong {
+  border-right-width: 0.4pt !important;
+}
+.size-3x4 .labelRow.addressRow,
+.size-3x4 .labelRow.complaints,
+.size-3x4 .labelRow.company {
+  font-size: var(--lt-small) !important;
+  line-height: 1.18 !important;
+}
+.size-3x4 .barcodeNumber {
+  font-family: Arial, Helvetica, sans-serif !important;
+  font-size: var(--lt-ean) !important;
+  font-weight: 400 !important;
+}
+.size-3x4 .label.smartLayout .labelRow > strong,
+.size-3x4 .label.smartLayout .labelRow > span {
+  line-height: 1.18 !important;
+}
+.size-3x4 .label > .barcodeBox {
+  padding: 1px 4px !important;
 }
