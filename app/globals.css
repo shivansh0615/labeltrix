@@ -3553,14 +3553,14 @@ input:focus-visible {
   --lt-special: 2.2;
 }
 .size-3x4 {
-  --lt-title: 10.5pt;
-  --lt-body: 9pt;
-  --lt-small: 8.8pt;
+  --lt-title: 8pt;
+  --lt-body: 7pt;
+  --lt-small: 6.5pt;
   --lt-pad-y: 1.5px;
   --lt-pad-x: 3px;
   --lt-barcode: 68px;
   --lt-bar-img: 43px;
-  --lt-ean: 11.5pt;
+  --lt-ean: 9.5pt;
   --lt-col: 39% 61%;
   --lt-title-h: 24px;
   --lt-special: 2.6;

@@ -15,6 +15,7 @@ import {
   setStrokingRgbColor,
   setTextRenderingMode,
 } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import JsBarcode from "jsbarcode";
 
 export type LabelSize = "2x2" | "2x3" | "3x3" | "3x4" | "3x5" | "4x4" | "5x5";
@@ -125,46 +126,52 @@ const BLACK = rgb(0, 0, 0);
 /** ~0.6 device px at 203 DPI — only used if Arial cannot be embedded. */
 const THERMAL_TEXT_STROKE = 0.22;
 
+function isTrueTypeBytes(bytes: Uint8Array) {
+  if (bytes.byteLength < 8) return false;
+  const tag = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+  return (
+    (bytes[0] === 0x00 &&
+      bytes[1] === 0x01 &&
+      bytes[2] === 0x00 &&
+      bytes[3] === 0x00) ||
+    tag === "OTTO" ||
+    tag === "true"
+  );
+}
+
 async function loadArialBytes(): Promise<Uint8Array | null> {
   if (typeof window === "undefined") return null;
   try {
     const res = await fetch("/fonts/Arial.ttf");
     if (res.ok) {
       const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.byteLength > 10_000) return bytes;
+      if (isTrueTypeBytes(bytes)) return bytes;
     }
   } catch {
-    /* try local fonts next */
+    /* Helvetica fallback */
   }
-  try {
-    const query = (
-      window as Window & {
-        queryLocalFonts?: (options?: {
-          postscriptNames?: string[];
-        }) => Promise<Array<{ family: string; style: string; blob: () => Promise<Blob> }>>;
-      }
-    ).queryLocalFonts;
-    if (!query) return null;
-    const fonts = await query({ postscriptNames: ["ArialMT"] });
-    const regular =
-      fonts.find(
-        (font) =>
-          font.family === "Arial" && /^regular$/i.test(font.style),
-      ) || fonts[0];
-    if (!regular) return null;
-    return new Uint8Array(await (await regular.blob()).arrayBuffer());
-  } catch {
-    return null;
-  }
+  return null;
+}
+
+function registerCustomFontkit(pdf: PDFDocument) {
+  const kit =
+    (fontkit as { default?: typeof fontkit }).default ?? fontkit;
+  pdf.registerFontkit(kit);
 }
 
 async function embedLabelFont(pdf: PDFDocument): Promise<PDFFont> {
   const arial = await loadArialBytes();
   if (arial) {
     try {
+      registerCustomFontkit(pdf);
       return await pdf.embedFont(arial, { subset: true });
     } catch {
-      return pdf.embedFont(arial);
+      try {
+        registerCustomFontkit(pdf);
+        return await pdf.embedFont(arial);
+      } catch {
+        /* Helvetica fallback */
+      }
     }
   }
   return pdf.embedFont(StandardFonts.Helvetica);
@@ -395,8 +402,8 @@ function sizeScale(labelSize: LabelSize) {
     case "3x5":
       return { title: 7.4, body: 6.5, small: 6.2, pad: 2.0, ean: 11, line: 1.12 };
     case "3x4":
-      // Own 3×4 thermal layout — not a scaled 3×3. Extra inch → type + row height.
-      return { title: 10.5, body: 9, small: 8.8, pad: 1.6, ean: 11.5, line: 1.12 };
+      // BarTender Arial Regular on 3×4 is ~7pt body. 9–10.5pt fills the cells.
+      return { title: 8, body: 7, small: 6.5, pad: 1.6, ean: 9.5, line: 1.12 };
     case "3x3":
       return square(3);
     case "4x4":
@@ -419,7 +426,7 @@ function thermalTextFloor(labelSize: LabelSize) {
     case "3x3":
       return 5.8;
     case "3x4":
-      return 8.5;
+      return 6.2;
     case "3x5":
       return 6;
     case "2x3":
