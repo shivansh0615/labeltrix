@@ -1526,6 +1526,69 @@ article {
     padding: 11px;
   }
 }
+.samplePacks {
+  margin: 12px clamp(24px, 4vw, 72px) 0;
+  max-width: 880px;
+}
+.samplePacks > p {
+  margin: 0 0 10px;
+  color: #5c5953;
+  font-size: 13px;
+}
+.samplePackGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.samplePackCard {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(18, 17, 16, 0.1);
+  border-radius: 2px;
+  background: rgba(255, 252, 248, 0.92);
+}
+.samplePackCard strong {
+  font-size: 13px;
+}
+.samplePackCard small {
+  color: #6a5d45;
+  font-size: 11px;
+}
+.samplePackActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.samplePackActions a,
+.samplePackActions button {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid rgba(18, 17, 16, 0.14);
+  border-radius: 2px;
+  background: #fff;
+  color: #172033;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.samplePackActions button {
+  background: #172033;
+  border-color: #172033;
+  color: #fff;
+}
+.samplePackActions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+@media (max-width: 720px) {
+  .samplePackGrid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* LabelTrix application shell — label canvases intentionally remain untouched. */
 :root {

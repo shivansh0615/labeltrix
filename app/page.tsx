@@ -53,6 +53,23 @@ type PackagingRun = {
 };
 type AuthRole = "admin" | "viewer";
 
+const PACKAGING_SAMPLES = [
+  {
+    marketplace: "Alpha" as const,
+    href: "/samples/alpha-packaging-demo.xlsx",
+    fileName: "alpha-packaging-demo.xlsx",
+    title: "Alpha packaging demo",
+    detail: "4 box labels · Packaging List + Label Format",
+  },
+  {
+    marketplace: "FBF" as const,
+    href: "/samples/fbf-packaging-demo.xlsx",
+    fileName: "fbf-packaging-demo.xlsx",
+    title: "FBF packaging demo",
+    detail: "2 box slips · FBF Packaging List + Box Label Format",
+  },
+];
+
 function productKey(product: Product) {
   return `${product.marketplace}|${product.ean}`;
 }
@@ -170,6 +187,14 @@ function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
   // First sheet only if it looks like a product master (FSN + EAN/Barcode/PO).
   const first = names[0];
   if (!first || !wb.Sheets[first]) return null;
+  if (
+    first === "Packaging List" ||
+    first === "FBF Packaging List" ||
+    first === "Label Format" ||
+    first === "Box Label Format"
+  ) {
+    return null;
+  }
   const sample = readRows(wb, first).slice(0, 5);
   if (!sample.length) return null;
   const looksProduct = sample.some(
@@ -181,6 +206,56 @@ function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
 function parseUpload(file: File, bytes: ArrayBuffer) {
   const wb = XLSX.read(bytes, { type: "array", cellDates: false, raw: true });
   const names = wb.SheetNames;
+  // Packaging first: those lists include FSN + PO and would look like a product master.
+  if (names.includes("Packaging List") && names.includes("Label Format")) {
+    const payload = readRows(wb, "Packaging List").map((r) => ({
+      po: value(r, "PO"),
+      invoiceNo: value(r, "Invoice No"),
+      fsn: value(r, "FSN"),
+      qty: value(r, "Qty"),
+      boxNo: value(r, "Box No"),
+    }));
+    return {
+      kind: "packaging" as const,
+      marketplace: "Alpha",
+      sourceSheet: "Packaging List",
+      formatSheet: "Label Format",
+      payload,
+    };
+  }
+  if (
+    names.includes("FBF Packaging List") &&
+    names.includes("Box Label Format")
+  ) {
+    const rows = readRows(wb, "FBF Packaging List");
+    const groups: FbfPack[] = [];
+    let current: FbfPack | null = null;
+    for (const r of rows) {
+      const box = value(r, "BOX");
+      if (box) {
+        current = {
+          boxNo: box,
+          consignment: value(r, "Consignment No ", "Consignment No"),
+          items: [],
+        };
+        groups.push(current);
+      }
+      if (!current)
+        throw new Error("A packaging row appears before its box number.");
+      current.items.push({
+        sku: value(r, "SKU Id"),
+        fsn: value(r, "FSN"),
+        qty: value(r, "Quantity Sent"),
+      });
+    }
+    return {
+      kind: "packaging" as const,
+      marketplace: "FBF",
+      sourceSheet: "FBF Packaging List",
+      formatSheet: "Box Label Format",
+      payload: groups,
+    };
+  }
   const productSheet = findProductDetailsSheet(wb);
   if (productSheet) {
     // Ignore any later sheets (e.g. "Product Label Format") — reference layout only.
@@ -236,55 +311,6 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
       // Sheet 2 is visual reference only — not used for data.
       formatSheet: "Product Details (data sheet)",
       products,
-    };
-  }
-  if (names.includes("Packaging List") && names.includes("Label Format")) {
-    const payload = readRows(wb, "Packaging List").map((r) => ({
-      po: value(r, "PO"),
-      invoiceNo: value(r, "Invoice No"),
-      fsn: value(r, "FSN"),
-      qty: value(r, "Qty"),
-      boxNo: value(r, "Box No"),
-    }));
-    return {
-      kind: "packaging" as const,
-      marketplace: "Alpha",
-      sourceSheet: "Packaging List",
-      formatSheet: "Label Format",
-      payload,
-    };
-  }
-  if (
-    names.includes("FBF Packaging List") &&
-    names.includes("Box Label Format")
-  ) {
-    const rows = readRows(wb, "FBF Packaging List");
-    const groups: FbfPack[] = [];
-    let current: FbfPack | null = null;
-    for (const r of rows) {
-      const box = value(r, "BOX");
-      if (box) {
-        current = {
-          boxNo: box,
-          consignment: value(r, "Consignment No ", "Consignment No"),
-          items: [],
-        };
-        groups.push(current);
-      }
-      if (!current)
-        throw new Error("A packaging row appears before its box number.");
-      current.items.push({
-        sku: value(r, "SKU Id"),
-        fsn: value(r, "FSN"),
-        qty: value(r, "Quantity Sent"),
-      });
-    }
-    return {
-      kind: "packaging" as const,
-      marketplace: "FBF",
-      sourceSheet: "FBF Packaging List",
-      formatSheet: "Box Label Format",
-      payload: groups,
     };
   }
   throw new Error(
@@ -1059,6 +1085,7 @@ export default function Home() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState<"Alpha" | "FBF" | null>(null);
   const canUpload = authRole === "admin";
 
   async function loadProducts(q = "") {
@@ -1224,6 +1251,24 @@ export default function Home() {
       }
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Upload failed");
+    }
+  }
+  async function loadSampleWorkbook(
+    sample: (typeof PACKAGING_SAMPLES)[number],
+  ) {
+    if (!canUpload || sampleBusy) return;
+    setSampleBusy(sample.marketplace);
+    try {
+      const res = await fetch(sample.href);
+      if (!res.ok) throw new Error("The demo workbook could not be downloaded.");
+      const file = new File([await res.blob()], sample.fileName, {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      await upload(file);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Demo upload failed.");
+    } finally {
+      setSampleBusy(null);
     }
   }
   function printPackaging(scope: "current" | "all") {
@@ -1783,6 +1828,41 @@ export default function Home() {
             placeholder="Search file, consignment, box, SKU or FSN"
           />
           <button onClick={searchPackaging}>Search packaging</button>
+        </div>
+      )}
+      {tab === "packaging" && (
+        <div className="samplePacks">
+          <p>
+            Demo workbooks — download one, then upload it, or load it here to
+            preview labels.
+          </p>
+          <div className="samplePackGrid">
+            {PACKAGING_SAMPLES.map((sample) => (
+              <div className="samplePackCard" key={sample.fileName}>
+                <span className={`tag ${sample.marketplace.toLowerCase()}`}>
+                  {sample.marketplace}
+                </span>
+                <strong>{sample.title}</strong>
+                <small>{sample.detail}</small>
+                <div className="samplePackActions">
+                  <a href={sample.href} download={sample.fileName}>
+                    Download Excel
+                  </a>
+                  {canUpload ? (
+                    <button
+                      type="button"
+                      disabled={sampleBusy !== null}
+                      onClick={() => loadSampleWorkbook(sample)}
+                    >
+                      {sampleBusy === sample.marketplace
+                        ? "Loading…"
+                        : "Load demo"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {tab === "master" ? (
@@ -2413,8 +2493,8 @@ export default function Home() {
               ) : (
                 <div className="empty">
                   {canUpload
-                    ? "Upload an Alpha or FBF Packaging List to create a run."
-                    : "Select a packaging run to preview, download, or print."}
+                    ? "Upload an Alpha or FBF Packaging List, or load a demo workbook above."
+                    : "Select a packaging run, or download a demo Excel above to inspect the format."}
                 </div>
               )}
             </article>
