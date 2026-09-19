@@ -38,14 +38,16 @@ test("product label cells stay left-aligned while centering text vertically", as
   );
 });
 
-test("PDF export prefers local Chromium and falls back in the browser", async () => {
+test("PDF download uses the lazy-loaded vector engine", async () => {
   const page = await readFile(pageUrl, "utf8");
   const server = await readFile(serverUrl, "utf8");
   const packageJson = JSON.parse(await readFile(packageUrl, "utf8"));
 
-  assert.doesNotMatch(page, /html2canvas|jsPDF|captureLabelCanvas/);
+  assert.doesNotMatch(page, /html2canvas|jsPDF|captureLabelCanvas|html-to-image/);
+  assert.doesNotMatch(page, /downloadPdfViaChromium|downloadNativePdf|toThermalPngDataUrl/);
   assert.equal(packageJson.dependencies?.html2canvas, undefined);
   assert.equal(packageJson.dependencies?.jspdf, undefined);
+  assert.equal(packageJson.dependencies?.["html-to-image"], undefined);
   assert.match(packageJson.dependencies?.["pdf-lib"] || "", /^[\^~]?1\.17\.1$/);
   assert.match(packageJson.dependencies?.jsbarcode || "", /./);
   assert.equal(packageJson.devDependencies?.["playwright-core"], "1.62.0");
@@ -53,16 +55,20 @@ test("PDF export prefers local Chromium and falls back in the browser", async ()
   assert.match(page, /buildPackagingPdf/);
   assert.match(page, /vector-label-pdf/);
   assert.match(page, /downloadPdfBytes/);
+  assert.match(page, /await import\("xlsx"\)/);
   assert.match(server, /await page\.emulateMedia\(\{ media: "screen" \}\)/);
   assert.match(server, /embedPngPage/);
   assert.doesNotMatch(server, /page\.pdf\(/);
 });
 
-test("native PDF pages use exact supported physical dimensions", async () => {
+test("print pages use the selected label's physical dimensions", async () => {
   const page = await readFile(pageUrl, "utf8");
   const server = await readFile(serverUrl, "utf8");
 
-  assert.match(page, /@page \{ size: 3in \$\{pageHeight\}in; margin: 0; \}/);
+  assert.match(
+    page,
+    /@page \{ size: \$\{labelSizeCssInches\(labelSize\)\.width\} \$\{labelSizeCssInches\(labelSize\)\.height\}; margin: 0; \}/,
+  );
   assert.match(server, /"3x5": \{\s*width: "3in",\s*height: "5in"/s);
   assert.match(server, /"3x4": \{\s*width: "3in",\s*height: "4in"/s);
   assert.match(server, /"3x3": \{\s*width: "3in",\s*height: "3in"/s);

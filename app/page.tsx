@@ -1,16 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as XLSX from "xlsx";
-import JsBarcode from "jsbarcode";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyPreviousMonthManufactureDate,
-  buildPackagingPdf,
-  buildProductsPdf,
   clampLabelSize,
-  computeSmartLabelLayoutPx,
   defaultBarcodeSource,
-  downloadPdfBytes,
   isManufactureDateKey,
   labelSizeCssInches,
   labelSizesForMarketplace,
@@ -18,7 +12,38 @@ import {
   resolveProductBarcode,
   type BarcodeSource,
   type LabelSize,
-} from "./lib/vector-label-pdf";
+  type SmartLabelLayout,
+} from "./lib/label-helpers";
+
+type PdfEngine = typeof import("./lib/vector-label-pdf");
+let pdfEnginePromise: Promise<PdfEngine> | null = null;
+function loadPdfEngine() {
+  pdfEnginePromise ??= import("./lib/vector-label-pdf");
+  return pdfEnginePromise;
+}
+
+type PdfJsModule = typeof import("pdfjs-dist");
+let pdfjsPromise: Promise<PdfJsModule> | null = null;
+function loadPdfJs() {
+  pdfjsPromise ??= import("pdfjs-dist").then(async (pdfjs) => {
+    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    }
+    return pdfjs;
+  });
+  return pdfjsPromise;
+}
+
+const previewPdfCache = new Map<string, Uint8Array>();
+const PREVIEW_PDF_CACHE_LIMIT = 8;
+function rememberPreviewPdf(key: string, bytes: Uint8Array) {
+  previewPdfCache.set(key, bytes);
+  if (previewPdfCache.size > PREVIEW_PDF_CACHE_LIMIT) {
+    const oldest = previewPdfCache.keys().next().value;
+    if (oldest !== undefined) previewPdfCache.delete(oldest);
+  }
+}
 
 type Product = {
   id?: number;
@@ -53,22 +78,44 @@ type PackagingRun = {
 };
 type AuthRole = "admin" | "viewer";
 
-const PACKAGING_SAMPLES = [
-  {
-    marketplace: "Alpha" as const,
-    href: "/samples/alpha-packaging-demo.xlsx",
-    fileName: "alpha-packaging-demo.xlsx",
-    title: "Alpha packaging demo",
-    detail: "4 box labels · Packaging List + Label Format",
-  },
-  {
-    marketplace: "FBF" as const,
-    href: "/samples/fbf-packaging-demo.xlsx",
-    fileName: "fbf-packaging-demo.xlsx",
-    title: "FBF packaging demo",
-    detail: "2 box slips · FBF Packaging List + Box Label Format",
-  },
-];
+const DEMO_PACKAGING_FILES = new Set([
+  "alpha-packaging-demo.xlsx",
+  "fbf-packaging-demo.xlsx",
+]);
+
+function isDemoPackagingRun(run: { sourceFile?: string }) {
+  return DEMO_PACKAGING_FILES.has((run.sourceFile || "").toLowerCase());
+}
+
+function packagingLabelSummary(
+  marketplace: "Alpha" | "FBF",
+  label: AlphaPack | FbfPack,
+  index: number,
+) {
+  if (marketplace === "Alpha") {
+    const pack = label as AlphaPack;
+    return {
+      title: pack.invoiceNo || pack.fsn || `Label ${index + 1}`,
+      meta: [
+        pack.boxNo && `Box ${pack.boxNo}`,
+        pack.fsn && `FSN ${pack.fsn}`,
+        pack.qty && `Qty ${pack.qty}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
+  const pack = label as FbfPack;
+  return {
+    title: pack.consignment || `Box ${pack.boxNo}` || `Label ${index + 1}`,
+    meta: [
+      pack.boxNo && `Box ${pack.boxNo}`,
+      `${pack.items.length} SKU${pack.items.length === 1 ? "" : "s"}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
 
 function productKey(product: Product) {
   return `${product.marketplace}|${product.ean}`;
@@ -98,7 +145,10 @@ function value(row: Record<string, unknown>, ...keys: string[]) {
   }
   return "";
 }
-function excelDate(v: unknown) {
+type XlsxModule = typeof import("xlsx");
+type WorkBook = import("xlsx").WorkBook;
+
+function excelDate(v: unknown, XLSX: XlsxModule) {
   if (typeof v !== "number") return String(v ?? "");
   const d = XLSX.SSF.parse_date_code(v);
   if (!d) return String(v);
@@ -114,11 +164,12 @@ function excelDate(v: unknown) {
 function applyExcelDates(
   payload: Record<string, unknown>,
   dateKeys: string[],
+  XLSX: XlsxModule,
 ) {
   const want = new Set(dateKeys.map(normalizeHeader));
   for (const key of Object.keys(payload)) {
     if (want.has(normalizeHeader(key))) {
-      payload[key] = excelDate(payload[key]);
+      payload[key] = excelDate(payload[key], XLSX);
     }
   }
 }
@@ -168,7 +219,7 @@ function parseLabelNumbers(input: string, total: number) {
   return selected;
 }
 
-function readRows(wb: XLSX.WorkBook, name: string) {
+function readRows(XLSX: XlsxModule, wb: WorkBook, name: string) {
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name], {
     defval: "",
     raw: true,
@@ -181,7 +232,10 @@ function productEan(row: Record<string, unknown>) {
 }
 
 /** Product masters: data lives on sheet 1 only. Sheet 2 is a visual label mock — never read. */
-function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
+function findProductDetailsSheet(
+  XLSX: XlsxModule,
+  wb: WorkBook,
+): string | null {
   const names = wb.SheetNames;
   if (names.includes("Product Details")) return "Product Details";
   // First sheet only if it looks like a product master (FSN + EAN/Barcode/PO).
@@ -195,7 +249,7 @@ function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
   ) {
     return null;
   }
-  const sample = readRows(wb, first).slice(0, 5);
+  const sample = readRows(XLSX, wb, first).slice(0, 5);
   if (!sample.length) return null;
   const looksProduct = sample.some(
     (row) => productEan(row) && value(row, "FSN", "Fsn", "fsn"),
@@ -203,12 +257,13 @@ function findProductDetailsSheet(wb: XLSX.WorkBook): string | null {
   return looksProduct ? first : null;
 }
 
-function parseUpload(file: File, bytes: ArrayBuffer) {
+async function parseUpload(file: File, bytes: ArrayBuffer) {
+  const XLSX = await import("xlsx");
   const wb = XLSX.read(bytes, { type: "array", cellDates: false, raw: true });
   const names = wb.SheetNames;
   // Packaging first: those lists include FSN + PO and would look like a product master.
   if (names.includes("Packaging List") && names.includes("Label Format")) {
-    const payload = readRows(wb, "Packaging List").map((r) => ({
+    const payload = readRows(XLSX, wb, "Packaging List").map((r) => ({
       po: value(r, "PO"),
       invoiceNo: value(r, "Invoice No"),
       fsn: value(r, "FSN"),
@@ -227,7 +282,7 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
     names.includes("FBF Packaging List") &&
     names.includes("Box Label Format")
   ) {
-    const rows = readRows(wb, "FBF Packaging List");
+    const rows = readRows(XLSX, wb, "FBF Packaging List");
     const groups: FbfPack[] = [];
     let current: FbfPack | null = null;
     for (const r of rows) {
@@ -256,10 +311,10 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
       payload: groups,
     };
   }
-  const productSheet = findProductDetailsSheet(wb);
+  const productSheet = findProductDetailsSheet(XLSX, wb);
   if (productSheet) {
     // Ignore any later sheets (e.g. "Product Label Format") — reference layout only.
-    const rows = readRows(wb, productSheet);
+    const rows = readRows(XLSX, wb, productSheet);
     const fbf = rows.some(isFbfProductRow);
     const products = rows
       .map((r) => {
@@ -272,6 +327,7 @@ function parseUpload(file: File, bytes: ArrayBuffer) {
                 "month and year of manufactured",
               ]
             : ["Date Of Manufacture "],
+          XLSX,
         );
         applyPreviousMonthManufactureDate(payload, fbf ? "FBF" : "Alpha");
         const ean = productEan(r);
@@ -327,21 +383,29 @@ function Barcode({
 }) {
   const [barcodeImage, setBarcodeImage] = useState("");
   useEffect(() => {
-    try {
-      const canvas = document.createElement("canvas");
-      JsBarcode(canvas, value, {
-        format,
-        displayValue: false,
-        margin: 4,
-        height: format === "EAN13" ? 180 : 144,
-        width: format === "EAN13" ? 9.5 : 2.4,
-        fontSize: 14,
-        background: "#ffffff",
+    let cancelled = false;
+    import("jsbarcode")
+      .then((mod) => {
+        if (cancelled) return;
+        const JsBarcode = mod.default;
+        const canvas = document.createElement("canvas");
+        JsBarcode(canvas, value, {
+          format,
+          displayValue: false,
+          margin: 4,
+          height: format === "EAN13" ? 180 : 144,
+          width: format === "EAN13" ? 9.5 : 2.4,
+          fontSize: 14,
+          background: "#ffffff",
+        });
+        if (!cancelled) setBarcodeImage(canvas.toDataURL("image/png"));
+      })
+      .catch(() => {
+        if (!cancelled) setBarcodeImage("");
       });
-      setBarcodeImage(canvas.toDataURL("image/png"));
-    } catch {
-      setBarcodeImage("");
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [value, format]);
   return (
     <div className="barcodeBox">
@@ -368,6 +432,7 @@ function ExactPdfPreview({
   build: () => Promise<Uint8Array>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const paintedRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -381,16 +446,12 @@ function ExactPdfPreview({
 
     (async () => {
       try {
-        const bytes = await build();
+        const cached = previewPdfCache.get(buildKey);
+        const bytes = cached ?? (await build());
+        if (!cached) rememberPreviewPdf(buildKey, bytes);
         if (cancelled) return;
 
-        const pdfjs = await import("pdfjs-dist");
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-          const worker = await import(
-            "pdfjs-dist/build/pdf.worker.min.mjs?url"
-          );
-          pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-        }
+        const pdfjs = await loadPdfJs();
 
         const data = bytes.slice();
         const doc = await pdfjs.getDocument({ data }).promise;
@@ -410,7 +471,10 @@ function ExactPdfPreview({
           canvasContext: ctx,
           viewport,
         }).promise;
-        if (!cancelled) setStatus("ready");
+        if (!cancelled) {
+          paintedRef.current = true;
+          setStatus("ready");
+        }
       } catch (error) {
         if (!cancelled) {
           setStatus("error");
@@ -444,7 +508,8 @@ function ExactPdfPreview({
         style={{
           width: dims.width,
           height: dims.height,
-          visibility: status === "ready" ? "visible" : "hidden",
+          visibility:
+            status === "ready" || paintedRef.current ? "visible" : "hidden",
         }}
       />
     </div>
@@ -543,13 +608,32 @@ function ProductLabel({
 }) {
   const d = product.payload;
   const barcode = resolveProductBarcode(product, barcodeSource);
-  const layout = computeSmartLabelLayoutPx(product.marketplace, labelSize, {
-    fsn: product.fsn,
-    payload: d,
-  });
+  const [layout, setLayout] = useState<SmartLabelLayout | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadPdfEngine().then((engine) => {
+      if (cancelled) return;
+      setLayout(
+        engine.computeSmartLabelLayoutPx(product.marketplace, labelSize, {
+          fsn: product.fsn,
+          payload: d,
+        }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    product.marketplace,
+    product.fsn,
+    product.ean,
+    product.updatedAt,
+    labelSize,
+  ]);
   const rh = (px: number) => ({
     ["--rh" as string]: `${Math.max(4, px)}px`,
   });
+  if (!layout) return null;
 
   if (product.marketplace === "Alpha") {
     const address = alphaAddressLines(d);
@@ -697,348 +781,6 @@ function FbfPackLabel({ label }: { label: FbfPack }) {
   );
 }
 
-function escapeHtmlAttribute(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-async function waitForLabelAssets(nodes: HTMLElement[]) {
-  await document.fonts.ready;
-  const images = nodes.flatMap((node) =>
-    Array.from(node.querySelectorAll("img")),
-  );
-  await Promise.all(
-    images.map(
-      (image) =>
-        new Promise<void>((resolve) => {
-          if (image.complete) resolve();
-          else {
-            image.addEventListener("load", () => resolve(), { once: true });
-            image.addEventListener("error", () => resolve(), { once: true });
-          }
-        }),
-    ),
-  );
-  await new Promise<void>((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
-}
-
-const PDF_PAGE_SIZES: Record<
-  LabelSize,
-  { widthPoints: number; heightPoints: number }
-> = {
-  "2x2": { widthPoints: 144, heightPoints: 144 },
-  "2x3": { widthPoints: 144, heightPoints: 216 },
-  "3x3": { widthPoints: 216, heightPoints: 216 },
-  "3x4": { widthPoints: 216, heightPoints: 288 },
-  "3x5": { widthPoints: 216, heightPoints: 360 },
-  "4x4": { widthPoints: 288, heightPoints: 288 },
-  "5x5": { widthPoints: 360, heightPoints: 360 },
-};
-
-async function isNativePdfServiceReady() {
-  try {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 800);
-    const response = await fetch("http://127.0.0.1:3100/health", {
-      signal: controller.signal,
-    });
-    window.clearTimeout(timer);
-    if (!response.ok) return false;
-    const body = (await response.json().catch(() => null)) as {
-      ready?: boolean;
-    } | null;
-    return Boolean(body?.ready);
-  } catch {
-    return false;
-  }
-}
-
-/** Flatten antialiased gray into pure black/white for thermal printers. */
-async function toThermalPngDataUrl(dataUrl: string) {
-  const image = new Image();
-  image.src = dataUrl;
-  await image.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Unable to prepare label image for PDF.");
-  ctx.drawImage(image, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    const value = luma < 200 ? 0 : 255;
-    data[i] = value;
-    data[i + 1] = value;
-    data[i + 2] = value;
-    data[i + 3] = 255;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
-function triggerPdfDownload(bytes: Uint8Array, fileName: string) {
-  const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-async function downloadPdfViaChromium(
-  nodes: HTMLElement[],
-  indexes: number[],
-  labelSize: LabelSize,
-  fileName: string,
-) {
-  const chunkSize = 40;
-  const { PDFDocument } = await import("pdf-lib");
-  const merged = await PDFDocument.create();
-
-  for (let start = 0; start < indexes.length; start += chunkSize) {
-    const slice = indexes.slice(start, start + chunkSize);
-    const response = await fetch("http://127.0.0.1:3100/pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        html: nativePdfDocument(nodes, slice, labelSize),
-        labelSize,
-        fileName,
-      }),
-    });
-
-    if (!response.ok) {
-      const result = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      throw new Error(result?.error || "Native PDF export failed.");
-    }
-
-    const part = await PDFDocument.load(await response.arrayBuffer());
-    const pages = await merged.copyPages(part, part.getPageIndices());
-    for (const page of pages) merged.addPage(page);
-  }
-
-  triggerPdfDownload(await merged.save(), fileName);
-}
-
-async function downloadPdfViaBrowser(
-  nodes: HTMLElement[],
-  indexes: number[],
-  labelSize: LabelSize,
-  fileName: string,
-) {
-  const chosenNodes = indexes.map((index) => nodes[index]);
-  const size = PDF_PAGE_SIZES[labelSize];
-  const { toPng } = await import("html-to-image");
-  const { PDFDocument } = await import("pdf-lib");
-  const pdf = await PDFDocument.create();
-  const batchSize = 12;
-
-  const stage = document.createElement("div");
-  stage.setAttribute("aria-hidden", "true");
-  stage.style.cssText =
-    "position:fixed;left:0;top:0;z-index:-1;pointer-events:none;opacity:0.02;background:#fff;";
-  document.body.appendChild(stage);
-
-  try {
-    for (let start = 0; start < chosenNodes.length; start += batchSize) {
-      const batch = chosenNodes.slice(start, start + batchSize);
-      for (const node of batch) {
-        if (!node) throw new Error("One or more selected labels could not be found.");
-        const clone = node.cloneNode(true) as HTMLElement;
-        clone.style.margin = "0";
-        clone.style.transform = "none";
-        clone.style.boxShadow = "none";
-        stage.replaceChildren(clone);
-        await waitForLabelAssets([clone]);
-
-        let dataUrl = await toPng(clone, {
-          pixelRatio: 3,
-          cacheBust: true,
-          backgroundColor: "#ffffff",
-          style: {
-            transform: "none",
-            animation: "none",
-            boxShadow: "none",
-          },
-        });
-        dataUrl = await toThermalPngDataUrl(dataUrl);
-        const pngBytes = await fetch(dataUrl).then((response) =>
-          response.arrayBuffer(),
-        );
-        const image = await pdf.embedPng(pngBytes);
-        const page = pdf.addPage([size.widthPoints, size.heightPoints]);
-        page.drawImage(image, {
-          x: 0,
-          y: 0,
-          width: size.widthPoints,
-          height: size.heightPoints,
-        });
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  } finally {
-    stage.remove();
-  }
-
-  triggerPdfDownload(await pdf.save(), fileName);
-}
-
-function nativePdfDocument(
-  nodes: HTMLElement[],
-  indexes: number[],
-  labelSize: LabelSize,
-) {
-  const dims = labelSizeCssInches(labelSize);
-  const chosenNodes = indexes.map((index) => nodes[index]);
-  if (!chosenNodes.length || chosenNodes.some((node) => !node)) {
-    throw new Error("One or more selected labels could not be found.");
-  }
-
-  const activeCss = Array.from(document.styleSheets)
-    .map((sheet) => {
-      try {
-        return Array.from(sheet.cssRules)
-          .map((rule) => rule.cssText)
-          .join("\n");
-      } catch {
-        return "";
-      }
-    })
-    .filter(Boolean)
-    .join("\n");
-  const pages = chosenNodes
-    .map(
-      (node) =>
-        `<section class="nativePdfPage size-${labelSize}">${node.innerHTML}</section>`,
-    )
-    .join("\n");
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <base href="${escapeHtmlAttribute(document.baseURI)}">
-    <style>${activeCss}
-      @page { size: ${dims.width} ${dims.height}; margin: 0; }
-      html, body {
-        width: ${dims.width};
-        margin: 0;
-        padding: 0;
-        overflow: visible;
-        background: #fff;
-      }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .nativePdfPage {
-        box-sizing: border-box;
-        width: ${dims.width};
-        height: ${dims.height};
-        min-height: ${dims.height};
-        max-height: ${dims.height};
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background: #fff;
-        page-break-after: always;
-        break-after: page;
-      }
-      .nativePdfPage > .label,
-      .nativePdfPage > .packLabel {
-        position: static !important;
-        box-sizing: border-box !important;
-        width: 100% !important;
-        height: 100% !important;
-        min-width: 100% !important;
-        max-width: 100% !important;
-        min-height: 100% !important;
-        max-height: 100% !important;
-        margin: 0 !important;
-        break-inside: auto !important;
-        page-break-inside: auto !important;
-        animation: none !important;
-        box-shadow: none !important;
-      }
-      .nativePdfPage > .label { display: flex !important; flex-direction: column !important; }
-      .nativePdfPage > .packLabel { display: block !important; }
-      .nativePdfPage .label,
-      .nativePdfPage .packLabel {
-        -webkit-font-smoothing: none !important;
-        font-smooth: never !important;
-        text-rendering: geometricPrecision !important;
-      }
-      .nativePdfPage .label,
-      .nativePdfPage .packLabel,
-      .nativePdfPage .barcodeBox,
-      .nativePdfPage .barcodeImage {
-        animation: none !important;
-        transform: none !important;
-      }
-      .nativePdfPage .labelTitle,
-      .nativePdfPage .barcodeTitle {
-        font-weight: 600 !important;
-        letter-spacing: 0.15px !important;
-      }
-      .nativePdfPage .labelRow > strong,
-      .nativePdfPage .alphaPack strong,
-      .nativePdfPage .fbfPack strong {
-        font-weight: 500 !important;
-        letter-spacing: 0.12px !important;
-      }
-      .nativePdfPage .labelRow > span,
-      .nativePdfPage .alphaPack span,
-      .nativePdfPage .fbfPack span {
-        font-weight: 400 !important;
-        letter-spacing: 0.08px !important;
-      }
-      .nativePdfPage .barcodeNumber {
-        transform: none !important;
-        max-width: 100% !important;
-        font-weight: 500 !important;
-      }
-      .nativePdfPage .barcodeImage {
-        max-width: 100% !important;
-        image-rendering: crisp-edges !important;
-      }
-    </style>
-  </head>
-  <body>${pages}</body>
-</html>`;
-}
-
-async function downloadNativePdf(
-  nodes: HTMLElement[],
-  indexes: number[],
-  labelSize: LabelSize,
-  fileName: string,
-) {
-  const chosenNodes = indexes.map((index) => nodes[index]);
-  if (!chosenNodes.length || chosenNodes.some((node) => !node)) {
-    throw new Error("One or more selected labels could not be found.");
-  }
-  await waitForLabelAssets(chosenNodes);
-
-  try {
-    if (await isNativePdfServiceReady()) {
-      await downloadPdfViaChromium(nodes, indexes, labelSize, fileName);
-      return;
-    }
-    await downloadPdfViaBrowser(nodes, indexes, labelSize, fileName);
-  } catch (error) {
-    if (error instanceof Error) throw error;
-    throw new Error("PDF export failed. Please try again.");
-  }
-}
 function RunLabel({ run, index = 0 }: { run: PackagingRun; index?: number }) {
   const label = run.payload[index];
   return run.marketplace === "Alpha" ? (
@@ -1047,6 +789,75 @@ function RunLabel({ run, index = 0 }: { run: PackagingRun; index?: number }) {
     <FbfPackLabel label={label as FbfPack} />
   );
 }
+
+const ProductResultRow = memo(function ProductResultRow({
+  product,
+  isActive,
+  isChecked,
+  onToggle,
+  onSelect,
+}: {
+  product: Product;
+  isActive: boolean;
+  isChecked: boolean;
+  onToggle: (product: Product) => void;
+  onSelect: (product: Product) => void;
+}) {
+  return (
+    <div
+      className={`resultRow${isActive ? " active" : ""}${isChecked ? " checked" : ""}`}
+    >
+      <label
+        className="resultCheck"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => onToggle(product)}
+          aria-label={`Select EAN ${product.ean}`}
+        />
+      </label>
+      <button type="button" onClick={() => onSelect(product)}>
+        <span className={`tag ${product.marketplace.toLowerCase()}`}>
+          {product.marketplace}
+        </span>
+        <strong>{product.title || product.fsn}</strong>
+        <small>EAN {product.ean}</small>
+        <small>FSN {product.fsn}</small>
+      </button>
+    </div>
+  );
+});
+
+const PackagingLabelRow = memo(function PackagingLabelRow({
+  marketplace,
+  title,
+  meta,
+  index,
+  isActive,
+  onSelect,
+}: {
+  marketplace: "Alpha" | "FBF";
+  title: string;
+  meta: string;
+  index: number;
+  isActive: boolean;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <button
+      className={isActive ? "active" : ""}
+      type="button"
+      onClick={() => onSelect(index)}
+    >
+      <span className={`tag ${marketplace.toLowerCase()}`}>{marketplace}</span>
+      <strong>{title}</strong>
+      {meta ? <small>{meta}</small> : null}
+      <small>Label {index + 1}</small>
+    </button>
+  );
+});
 
 export default function Home() {
   const [tab, setTab] = useState<"master" | "packaging">("master");
@@ -1085,7 +896,6 @@ export default function Home() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
-  const [sampleBusy, setSampleBusy] = useState<"Alpha" | "FBF" | null>(null);
   const canUpload = authRole === "admin";
 
   async function loadProducts(q = "") {
@@ -1128,15 +938,21 @@ export default function Home() {
     }
     const j = await r.json();
     setRuns(j.runs ?? []);
-    setSelectedRun((current) =>
-      current?.marketplace === marketplaceFilter
-        ? current
-        : ((j.runs ?? []).find(
-            (run: PackagingRun) => run.marketplace === marketplaceFilter,
-          ) ??
-          j.runs?.[0] ??
-          null),
-    );
+    setSelectedRun((current) => {
+      const uploaded = (j.runs ?? []).filter(
+        (run: PackagingRun) => !isDemoPackagingRun(run),
+      );
+      if (current && uploaded.some((run: PackagingRun) => run.id === current.id)) {
+        return current;
+      }
+      return (
+        uploaded.find(
+          (run: PackagingRun) => run.marketplace === marketplaceFilter,
+        ) ??
+        uploaded[0] ??
+        null
+      );
+    });
   }
   async function refreshAuth() {
     const r = await fetch("/api/auth/me");
@@ -1208,7 +1024,7 @@ export default function Home() {
     }
     setNotice("Reading workbook...");
     try {
-      const parsed = parseUpload(file, await file.arrayBuffer());
+      const parsed = await parseUpload(file, await file.arrayBuffer());
       if (parsed.kind === "product") {
         if (!parsed.products.length)
           throw new Error("No valid EAN and FSN product rows were found.");
@@ -1253,39 +1069,23 @@ export default function Home() {
       setNotice(e instanceof Error ? e.message : "Upload failed");
     }
   }
-  async function loadSampleWorkbook(
-    sample: (typeof PACKAGING_SAMPLES)[number],
-  ) {
-    if (!canUpload || sampleBusy) return;
-    setSampleBusy(sample.marketplace);
-    try {
-      const res = await fetch(sample.href);
-      if (!res.ok) throw new Error("The demo workbook could not be downloaded.");
-      const file = new File([await res.blob()], sample.fileName, {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      await upload(file);
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Demo upload failed.");
-    } finally {
-      setSampleBusy(null);
-    }
-  }
-  function printPackaging(scope: "current" | "all") {
+  async function printPackaging(scope: "current" | "all") {
+    await loadPdfEngine();
     setActionMenu(null);
     setPrintScope(scope);
     setTimeout(() => {
       window.print();
       setPrintScope(null);
-    }, 150);
+    }, 200);
   }
-  function printProducts(scope: "current" | "all") {
+  async function printProducts(scope: "current" | "all") {
+    await loadPdfEngine();
     setActionMenu(null);
     setProductPrintScope(scope);
     setTimeout(() => {
       window.print();
       setProductPrintScope(null);
-    }, 150);
+    }, 200);
   }
   async function downloadProducts(
     scope: "current" | "all" | "selected",
@@ -1319,6 +1119,7 @@ export default function Home() {
         "",
       );
       const fileName = `${base}-${scope === "current" ? `EAN-${selected.ean}` : scope === "selected" ? "selected-labels" : "whole-file"}.pdf`;
+      const { buildProductsPdf, downloadPdfBytes } = await loadPdfEngine();
       const bytes = await buildProductsPdf(
         productsForPdf,
         labelSize,
@@ -1338,14 +1139,20 @@ export default function Home() {
       setDownloading(false);
     }
   }
-  function toggleCheckedProduct(product: Product) {
+  const toggleCheckedProduct = useCallback((product: Product) => {
     const key = productKey(product);
     setCheckedKeys((current) =>
       current.includes(key)
         ? current.filter((item) => item !== key)
         : [...current, key],
     );
-  }
+  }, []);
+  const selectProduct = useCallback((product: Product) => {
+    setSelected(product);
+  }, []);
+  const selectPackagingLabel = useCallback((index: number) => {
+    setRunLabelIndex(index);
+  }, []);
   async function downloadPackaging(
     scope: "current" | "all" | "selected",
     requestedIndexes: number[] = [],
@@ -1362,6 +1169,7 @@ export default function Home() {
             : selectedRun.payload.map((_, i) => i);
       const base = selectedRun.sourceFile.replace(/\.[^.]+$/, "");
       const fileName = `${base}-${scope === "current" ? `label-${runLabelIndex + 1}` : scope === "selected" ? "selected-labels" : "whole-file"}.pdf`;
+      const { buildPackagingPdf, downloadPdfBytes } = await loadPdfEngine();
       const bytes = await buildPackagingPdf(selectedRun, indexes, labelSize);
       downloadPdfBytes(bytes, fileName);
       setNotice(
@@ -1384,6 +1192,7 @@ export default function Home() {
       return;
     }
     for (const run of runs) {
+      if (isDemoPackagingRun(run)) continue;
       if (run.sourceFile.toLowerCase().includes(q)) {
         setSelectedRun(run);
         setRunLabelIndex(0);
@@ -1406,32 +1215,75 @@ export default function Home() {
     }
     setNotice(`No packaging record found for "${packagingQuery}".`);
   }
-  const matchingSourceProducts = selected
-    ? allProducts.filter(
-        (product) =>
-          product.sourceFile === selected.sourceFile &&
-          product.marketplace === selected.marketplace,
-      )
-    : [];
-  const sourceProducts = matchingSourceProducts.length
-    ? matchingSourceProducts
-    : selected
-      ? [selected]
-      : [];
-  const visibleProducts = products.filter(
-    (product) => product.marketplace === marketplaceFilter,
+  const checkedKeySet = useMemo(() => new Set(checkedKeys), [checkedKeys]);
+  const matchingSourceProducts = useMemo(
+    () =>
+      selected
+        ? allProducts.filter(
+            (product) =>
+              product.sourceFile === selected.sourceFile &&
+              product.marketplace === selected.marketplace,
+          )
+        : [],
+    [allProducts, selected],
   );
-  const checkedProducts = allProducts.filter((product) =>
-    checkedKeys.includes(productKey(product)),
+  const sourceProducts = useMemo(
+    () =>
+      matchingSourceProducts.length
+        ? matchingSourceProducts
+        : selected
+          ? [selected]
+          : [],
+    [matchingSourceProducts, selected],
   );
-  const visibleCheckedCount = visibleProducts.filter((product) =>
-    checkedKeys.includes(productKey(product)),
-  ).length;
+  const visibleProducts = useMemo(
+    () =>
+      products.filter((product) => product.marketplace === marketplaceFilter),
+    [products, marketplaceFilter],
+  );
+  const checkedProducts = useMemo(
+    () =>
+      allProducts.filter((product) => checkedKeySet.has(productKey(product))),
+    [allProducts, checkedKeySet],
+  );
+  const visibleCheckedCount = useMemo(
+    () =>
+      visibleProducts.filter((product) =>
+        checkedKeySet.has(productKey(product)),
+      ).length,
+    [visibleProducts, checkedKeySet],
+  );
   const allVisibleChecked =
     visibleProducts.length > 0 &&
     visibleCheckedCount === visibleProducts.length;
-  const visibleRuns = runs.filter(
-    (run) => run.marketplace === marketplaceFilter,
+  const visibleRuns = useMemo(
+    () =>
+      runs.filter(
+        (run) =>
+          run.marketplace === marketplaceFilter && !isDemoPackagingRun(run),
+      ),
+    [runs, marketplaceFilter],
+  );
+  const uploadedRuns = useMemo(
+    () => runs.filter((run) => !isDemoPackagingRun(run)),
+    [runs],
+  );
+  const alphaProductCount = useMemo(
+    () => allProducts.filter((product) => product.marketplace === "Alpha").length,
+    [allProducts],
+  );
+  const fbfProductCount = useMemo(
+    () => allProducts.filter((product) => product.marketplace === "FBF").length,
+    [allProducts],
+  );
+  const alphaRunCount = useMemo(
+    () =>
+      uploadedRuns.filter((run) => run.marketplace === "Alpha").length,
+    [uploadedRuns],
+  );
+  const fbfRunCount = useMemo(
+    () => uploadedRuns.filter((run) => run.marketplace === "FBF").length,
+    [uploadedRuns],
   );
   function chooseMarketplace(marketplace: "Alpha" | "FBF") {
     setMarketplaceFilter(marketplace);
@@ -1446,7 +1298,7 @@ export default function Home() {
       );
     } else {
       setSelectedRun(
-        runs.find((run) => run.marketplace === marketplace) ?? null,
+        uploadedRuns.find((run) => run.marketplace === marketplace) ?? null,
       );
       setRunLabelIndex(0);
     }
@@ -1457,6 +1309,18 @@ export default function Home() {
     setLabelSize((prev) => clampLabelSize(prev, marketplaceFilter));
     setBarcodeSource(defaultBarcodeSource(marketplaceFilter));
   }, [marketplaceFilter]);
+  useEffect(() => {
+    if (tab !== "packaging") return;
+    if (
+      selectedRun &&
+      !isDemoPackagingRun(selectedRun) &&
+      visibleRuns.some((run) => run.id === selectedRun.id)
+    ) {
+      return;
+    }
+    setSelectedRun(visibleRuns[0] ?? null);
+    setRunLabelIndex(0);
+  }, [tab, selectedRun, visibleRuns]);
   async function downloadCheckedProducts() {
     if (!checkedProducts.length) {
       setNotice("Select one or more products from the list first.");
@@ -1466,6 +1330,7 @@ export default function Home() {
     setDownloading(true);
     try {
       const fileName = `selected-eans-${checkedProducts.length}-labels.pdf`;
+      const { buildProductsPdf, downloadPdfBytes } = await loadPdfEngine();
       const bytes = await buildProductsPdf(
         checkedProducts,
         labelSize,
@@ -1515,12 +1380,10 @@ export default function Home() {
       if (selected && removedKeys.has(productKey(selected))) {
         setSelected(null);
       }
+      setAllProducts((current) =>
+        current.filter((product) => !removedKeys.has(productKey(product))),
+      );
       await loadProducts(appliedQuery);
-      const allRes = await fetch("/api/products");
-      if (allRes.ok) {
-        const allJson = await allRes.json();
-        setAllProducts(allJson.products ?? []);
-      }
       setNotice(
         `${j.deleted ?? checkedProducts.length} product${(j.deleted ?? checkedProducts.length) === 1 ? "" : "s"} deleted.`,
       );
@@ -1556,11 +1419,11 @@ export default function Home() {
     }
   }
   function toggleAllVisibleProducts() {
-    const visibleKeys = visibleProducts.map(productKey);
+    const visibleKeySet = new Set(visibleProducts.map(productKey));
     setCheckedKeys((current) =>
       allVisibleChecked
-        ? current.filter((key) => !visibleKeys.includes(key))
-        : Array.from(new Set([...current, ...visibleKeys])),
+        ? current.filter((key) => !visibleKeySet.has(key))
+        : Array.from(new Set([...current, ...visibleKeySet])),
     );
   }
   async function downloadChosenLabels() {
@@ -1800,10 +1663,7 @@ export default function Home() {
         >
           <i /> Alpha
           <small>
-            {tab === "master"
-              ? allProducts.filter((product) => product.marketplace === "Alpha")
-                  .length
-              : runs.filter((run) => run.marketplace === "Alpha").length}
+            {tab === "master" ? alphaProductCount : alphaRunCount}
           </small>
         </button>
         <button
@@ -1812,10 +1672,7 @@ export default function Home() {
         >
           <i /> FBF
           <small>
-            {tab === "master"
-              ? allProducts.filter((product) => product.marketplace === "FBF")
-                  .length
-              : runs.filter((run) => run.marketplace === "FBF").length}
+            {tab === "master" ? fbfProductCount : fbfRunCount}
           </small>
         </button>
       </nav>
@@ -1828,41 +1685,6 @@ export default function Home() {
             placeholder="Search file, consignment, box, SKU or FSN"
           />
           <button onClick={searchPackaging}>Search packaging</button>
-        </div>
-      )}
-      {tab === "packaging" && (
-        <div className="samplePacks">
-          <p>
-            Demo workbooks — download one, then upload it, or load it here to
-            preview labels.
-          </p>
-          <div className="samplePackGrid">
-            {PACKAGING_SAMPLES.map((sample) => (
-              <div className="samplePackCard" key={sample.fileName}>
-                <span className={`tag ${sample.marketplace.toLowerCase()}`}>
-                  {sample.marketplace}
-                </span>
-                <strong>{sample.title}</strong>
-                <small>{sample.detail}</small>
-                <div className="samplePackActions">
-                  <a href={sample.href} download={sample.fileName}>
-                    Download Excel
-                  </a>
-                  {canUpload ? (
-                    <button
-                      type="button"
-                      disabled={sampleBusy !== null}
-                      onClick={() => loadSampleWorkbook(sample)}
-                    >
-                      {sampleBusy === sample.marketplace
-                        ? "Loading…"
-                        : "Load demo"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
       {tab === "master" ? (
@@ -1994,35 +1816,18 @@ export default function Home() {
               <div className="results">
                 {visibleProducts.map((p) => {
                   const key = productKey(p);
-                  const isActive =
-                    selected?.ean === p.ean &&
-                    selected.marketplace === p.marketplace;
-                  const isChecked = checkedKeys.includes(key);
                   return (
-                    <div
-                      className={`resultRow${isActive ? " active" : ""}${isChecked ? " checked" : ""}`}
+                    <ProductResultRow
                       key={key}
-                    >
-                      <label
-                        className="resultCheck"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleCheckedProduct(p)}
-                          aria-label={`Select EAN ${p.ean}`}
-                        />
-                      </label>
-                      <button type="button" onClick={() => setSelected(p)}>
-                        <span className={`tag ${p.marketplace.toLowerCase()}`}>
-                          {p.marketplace}
-                        </span>
-                        <strong>{p.title || p.fsn}</strong>
-                        <small>EAN {p.ean}</small>
-                        <small>FSN {p.fsn}</small>
-                      </button>
-                    </div>
+                      product={p}
+                      isActive={
+                        selected?.ean === p.ean &&
+                        selected.marketplace === p.marketplace
+                      }
+                      isChecked={checkedKeySet.has(key)}
+                      onToggle={toggleCheckedProduct}
+                      onSelect={selectProduct}
+                    />
                   );
                 })}
               </div>
@@ -2173,10 +1978,12 @@ export default function Home() {
                           JSON.stringify(selected.payload),
                         ].join("|")}
                         build={() =>
-                          buildProductsPdf(
-                            [selected],
-                            labelSize,
-                            barcodeSource,
+                          loadPdfEngine().then((engine) =>
+                            engine.buildProductsPdf(
+                              [selected],
+                              labelSize,
+                              barcodeSource,
+                            ),
                           )
                         }
                       />
@@ -2201,44 +2008,12 @@ export default function Home() {
                       ))}
                     </div>
                   )}
-                  <div className="productPdfSource" aria-hidden="true">
-                    {sourceProducts.map((product) => (
-                      <div
-                        className="productPdfPage"
-                        data-product-pdf-label
-                        key={`${product.marketplace}-${product.ean}`}
-                      >
-                        <ProductLabel
-                            product={product}
-                            labelSize={labelSize}
-                            barcodeSource={barcodeSource}
-                          />
-                      </div>
-                    ))}
-                  </div>
                 </>
               ) : (
                 <div className="empty">
                   {canUpload
                     ? "Upload or select a product."
                     : "Select a product to preview, download, or print."}
-                </div>
-              )}
-              {checkedProducts.length > 0 && (
-                <div className="productPdfSource" aria-hidden="true">
-                  {checkedProducts.map((product) => (
-                    <div
-                      className="productPdfPage"
-                      data-checked-product-pdf-label
-                      key={`checked-${product.marketplace}-${product.ean}`}
-                    >
-                      <ProductLabel
-                            product={product}
-                            labelSize={labelSize}
-                            barcodeSource={barcodeSource}
-                          />
-                    </div>
-                  ))}
                 </div>
               )}
             </article>
@@ -2249,18 +2024,18 @@ export default function Home() {
           <section className="stats">
             <div>
               <span>Packaging uploads</span>
-              <strong>{runs.length}</strong>
+              <strong>{uploadedRuns.length}</strong>
             </div>
             <div>
               <span>Alpha runs</span>
               <strong>
-                {runs.filter((r) => r.marketplace === "Alpha").length}
+                {uploadedRuns.filter((r) => r.marketplace === "Alpha").length}
               </strong>
             </div>
             <div>
               <span>FBF runs</span>
               <strong>
-                {runs.filter((r) => r.marketplace === "FBF").length}
+                {uploadedRuns.filter((r) => r.marketplace === "FBF").length}
               </strong>
             </div>
             <div>
@@ -2271,27 +2046,56 @@ export default function Home() {
           <section className="workspace">
             <aside>
               <div className="resultHeading">
-                <span>Packaging history</span>
-                <small>{visibleRuns.length} uploads</small>
+                <span>Packaging labels</span>
+                <small>
+                  {selectedRun
+                    ? `${selectedRun.labelCount} found`
+                    : "0 found"}
+                </small>
               </div>
-              <div className="results">
-                {visibleRuns.map((r) => (
-                  <button
-                    className={selectedRun?.id === r.id ? "active" : ""}
-                    key={r.id}
-                    onClick={() => {
-                      setSelectedRun(r);
+              {visibleRuns.length > 1 ? (
+                <div className="search">
+                  <select
+                    aria-label="Choose uploaded packaging workbook"
+                    value={selectedRun?.id ?? ""}
+                    onChange={(event) => {
+                      const next = visibleRuns.find(
+                        (run) => String(run.id) === event.target.value,
+                      );
+                      if (!next) return;
+                      setSelectedRun(next);
                       setRunLabelIndex(0);
                     }}
                   >
-                    <span className={`tag ${r.marketplace.toLowerCase()}`}>
-                      {r.marketplace}
-                    </span>
-                    <strong>{r.sourceFile}</strong>
-                    <small>{r.labelCount} labels</small>
-                    <small>{new Date(r.createdAt).toLocaleString()}</small>
-                  </button>
-                ))}
+                    {visibleRuns.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {run.sourceFile} ({run.labelCount})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <div className="results">
+                {selectedRun
+                  ? selectedRun.payload.map((label, index) => {
+                      const row = packagingLabelSummary(
+                        selectedRun.marketplace,
+                        label,
+                        index,
+                      );
+                      return (
+                        <PackagingLabelRow
+                          key={`${selectedRun.id}-${index}`}
+                          marketplace={selectedRun.marketplace}
+                          title={row.title}
+                          meta={row.meta}
+                          index={index}
+                          isActive={index === runLabelIndex}
+                          onSelect={selectPackagingLabel}
+                        />
+                      );
+                    })
+                  : null}
               </div>
             </aside>
             <article>
@@ -2461,10 +2265,12 @@ export default function Home() {
                           selectedRun.marketplace,
                         ].join("|")}
                         build={() =>
-                          buildPackagingPdf(
-                            selectedRun,
-                            [runLabelIndex],
-                            labelSize,
+                          loadPdfEngine().then((engine) =>
+                            engine.buildPackagingPdf(
+                              selectedRun,
+                              [runLabelIndex],
+                              labelSize,
+                            ),
                           )
                         }
                       />
@@ -2482,13 +2288,6 @@ export default function Home() {
                       ))}
                     </div>
                   )}
-                  <div className="pdfSource" aria-hidden="true">
-                    {selectedRun.payload.map((_, i) => (
-                      <div className="pdfPage" data-pdf-label key={i}>
-                        <RunLabel run={selectedRun} index={i} />
-                      </div>
-                    ))}
-                  </div>
                 </>
               ) : (
                 <div className="empty">
@@ -2506,3 +2305,4 @@ export default function Home() {
     </main>
   );
 }
+

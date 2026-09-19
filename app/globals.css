@@ -1352,38 +1352,6 @@ article {
 .actionDropdown button:hover {
   background: #eef4ff;
 }
-.pdfSource {
-  position: fixed;
-  top: 0;
-  left: -12000px;
-  z-index: -1;
-  background: #fff;
-}
-.productPdfSource {
-  position: fixed;
-  top: 0;
-  left: -12000px;
-  z-index: -1;
-  background: #fff;
-}
-.productPdfPage {
-  width: max-content;
-  padding: 0;
-  background: #fff;
-}
-.productPdfPage .label {
-  margin: 0;
-  box-shadow: none;
-}
-.pdfPage {
-  width: max-content;
-  padding: 0;
-  background: #fff;
-}
-.pdfPage .packLabel {
-  margin: 0;
-  box-shadow: none;
-}
 @media (max-width: 560px) {
   .tabs {
     margin-left: 14px;
@@ -1407,12 +1375,6 @@ article {
   .record,
   .notice,
   .previewHead {
-    display: none !important;
-  }
-  .pdfSource {
-    display: none !important;
-  }
-  .productPdfSource {
     display: none !important;
   }
   .workspace,
@@ -3079,12 +3041,6 @@ input:focus-visible {
 .size-3x3 .fbfPack .mergedBoxNo {
   padding: 5px 2px;
   font-size: 8.5px;
-}
-.pdfPage,
-.productPdfPage {
-  width: var(--physical-label-width);
-  height: var(--physical-label-height);
-  overflow: hidden;
 }
 @media (max-width: 680px) {
   .marketplaceSubmenu {

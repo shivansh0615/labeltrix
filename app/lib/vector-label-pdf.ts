@@ -17,72 +17,28 @@ import {
 } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import JsBarcode from "jsbarcode";
+import {
+  type LabelSize,
+  type SmartLabelLayout,
+  defaultBarcodeSource,
+  isManufactureDateKey,
+  previousMonthManufactureLabel,
+  resolveProductBarcode,
+} from "./label-helpers";
 
-export type LabelSize = "2x2" | "2x3" | "3x3" | "3x4" | "3x5" | "4x4" | "5x5";
-export type BarcodeSource = "EAN" | "FSN";
-
-/** Product master sizes by marketplace. */
-export const ALPHA_LABEL_SIZES: readonly LabelSize[] = [
-  "3x3",
-  "4x4",
-  "5x5",
-  "3x4",
-  "3x5",
-  "2x3",
-];
-export const FBF_LABEL_SIZES: readonly LabelSize[] = [
-  "2x2",
-  "3x3",
-  "4x4",
-  "5x5",
-  "2x3",
-  "3x4",
-  "3x5",
-];
-
-export function labelSizesForMarketplace(
-  marketplace: "Alpha" | "FBF",
-): readonly LabelSize[] {
-  return marketplace === "FBF" ? FBF_LABEL_SIZES : ALPHA_LABEL_SIZES;
-}
-
-export function clampLabelSize(
-  size: LabelSize,
-  marketplace: "Alpha" | "FBF",
-): LabelSize {
-  const allowed = labelSizesForMarketplace(marketplace);
-  return allowed.includes(size) ? size : allowed[0];
-}
-
-export function defaultBarcodeSource(
-  marketplace: "Alpha" | "FBF",
-): BarcodeSource {
-  return marketplace === "FBF" ? "FSN" : "EAN";
-}
-
-export function resolveProductBarcode(
-  product: { ean: string; fsn: string },
-  source: BarcodeSource,
-): { value: string; format: "EAN13" | "CODE128" } {
-  if (source === "EAN") {
-    const ean = String(product.ean || "").replace(/\D/g, "");
-    // Prefer real EAN-13 when possible; otherwise fall back to CODE128 so the
-    // barcode still prints when the selected source digits are not EAN-13.
-    if (/^\d{13}$/.test(ean)) return { value: ean, format: "EAN13" };
-    const raw = String(product.ean || "").trim();
-    return { value: raw || product.fsn, format: "CODE128" };
-  }
-  const fsn = String(product.fsn || "").trim();
-  return { value: fsn || String(product.ean || "").trim(), format: "CODE128" };
-}
-
-export function labelSizeCssInches(size: LabelSize): {
-  width: string;
-  height: string;
-} {
-  const [w, h] = size.split("x").map(Number);
-  return { width: `${w}in`, height: `${h}in` };
-}
+export type { BarcodeSource, LabelSize, SmartLabelLayout } from "./label-helpers";
+export {
+  ALPHA_LABEL_SIZES,
+  FBF_LABEL_SIZES,
+  applyPreviousMonthManufactureDate,
+  clampLabelSize,
+  defaultBarcodeSource,
+  isManufactureDateKey,
+  labelSizeCssInches,
+  labelSizesForMarketplace,
+  previousMonthManufactureLabel,
+  resolveProductBarcode,
+} from "./label-helpers";
 
 export type VectorProduct = {
   marketplace: "Alpha" | "FBF";
@@ -139,7 +95,9 @@ function isTrueTypeBytes(bytes: Uint8Array) {
   );
 }
 
-async function loadArialBytes(): Promise<Uint8Array | null> {
+let arialBytesPromise: Promise<Uint8Array | null> | null = null;
+
+async function fetchArialBytes(): Promise<Uint8Array | null> {
   if (typeof window === "undefined") return null;
   try {
     const res = await fetch("/fonts/Arial.ttf");
@@ -151,6 +109,11 @@ async function loadArialBytes(): Promise<Uint8Array | null> {
     /* Helvetica fallback */
   }
   return null;
+}
+
+function loadArialBytes(): Promise<Uint8Array | null> {
+  arialBytesPromise ??= fetchArialBytes();
+  return arialBytesPromise;
 }
 
 function registerCustomFontkit(pdf: PDFDocument) {
@@ -294,49 +257,6 @@ export function toValueCase(text: string): string {
 
 function normalizeHeader(key: string) {
   return key.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-/** Previous calendar month as Mon-YY (e.g. adding in August → Jul-26). */
-export function previousMonthManufactureLabel(now = new Date()) {
-  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return d
-    .toLocaleDateString("en-US", { month: "short", year: "2-digit" })
-    .replace(" ", "-");
-}
-
-const MANUFACTURE_DATE_HEADERS = new Set(
-  [
-    "Date Of Manufacture ",
-    "Date Of Manufacture",
-    "Month and year of manufactured",
-    "month and year of manufactured",
-  ].map(normalizeHeader),
-);
-
-export function isManufactureDateKey(key: string) {
-  return MANUFACTURE_DATE_HEADERS.has(normalizeHeader(key));
-}
-
-/** Force Date of Manufacture / month-year fields to previous calendar month. */
-export function applyPreviousMonthManufactureDate(
-  payload: Record<string, unknown>,
-  marketplace: "Alpha" | "FBF",
-) {
-  const label = previousMonthManufactureLabel();
-  let found = false;
-  for (const key of Object.keys(payload)) {
-    if (isManufactureDateKey(key)) {
-      payload[key] = label;
-      found = true;
-    }
-  }
-  if (!found) {
-    if (marketplace === "FBF") {
-      payload["month and year of manufactured"] = label;
-    } else {
-      payload["Date Of Manufacture "] = label;
-    }
-  }
 }
 
 function fieldValue(
@@ -1124,13 +1044,6 @@ function titleHeightSlot(
     keep: 2,
   };
 }
-
-export type SmartLabelLayout = {
-  title: number;
-  fields: number[];
-  special: number[]; // Alpha: [address, complaints]; FBF: [company]
-  barcode: number;
-};
 
 function measureFromFont(font: PDFFont) {
   return (text: string, size: number) => font.widthOfTextAtSize(text, size);
@@ -2059,32 +1972,64 @@ async function drawAlphaPack(
   const s = sizeScale(labelSize);
   const margin = 8;
   const tableW = width - margin * 2;
-  const rows: Array<[string, string]> = [
+  const tableTop = height - margin;
+  const labelRatio = 0.33;
+  const pairs: Array<[string, string]> = [
     ["Invoice No.", label.invoiceNo],
     ["FSN", label.fsn],
     ["Qty", label.qty],
     ["PO No.", label.po],
     ["Box No.", label.boxNo],
   ];
-  const rowH = (height - margin * 2) / rows.length;
-  let y = height - margin;
-  for (const [k, v] of rows) {
-    drawRow(
+  const rowH = (height - margin * 2) / pairs.length;
+  const rows: GridRow[] = pairs.map(([key, value]) => ({
+    height: rowH,
+    kind: "pair",
+    label: key,
+    value,
+    fontSize: s.title,
+  }));
+  // Same 2-column box the HTML packing slip uses (outer frame + row/column rules).
+  paintTerryGrid(page, margin, tableW, tableTop, rows, labelRatio, {
+    outer: 0.75,
+    inner: 0.55,
+  });
+
+  const minSize = thermalTextFloor(labelSize);
+  let y = tableTop;
+  for (const row of rows) {
+    const labelW = tableW * labelRatio;
+    drawCellText(
       page,
-      k,
-      v,
+      toLabelCase(row.label || ""),
       font,
-      s.title,
+      row.fontSize || s.title,
       margin,
       y,
-      tableW,
-      rowH,
-      0.38,
+      labelW,
+      row.height,
       s.pad,
+      "center",
       s.line,
-      thermalTextFloor(labelSize),
+      minSize,
+      true,
     );
-    y -= rowH;
+    drawCellText(
+      page,
+      toValueCase(row.value || ""),
+      font,
+      row.fontSize || s.title,
+      margin + labelW,
+      y,
+      tableW - labelW,
+      row.height,
+      s.pad,
+      "center",
+      s.line,
+      minSize,
+      true,
+    );
+    y -= row.height;
   }
 }
 
