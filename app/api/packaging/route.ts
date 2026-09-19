@@ -102,7 +102,10 @@ export async function DELETE(request: Request) {
   try {
     await requireAdmin(request);
     const db = await ensureSchema();
-    const body = (await request.json()) as { id?: unknown };
+    const body = (await request.json()) as {
+      id?: unknown;
+      indexes?: unknown;
+    };
     const id = Number(body.id);
     if (!Number.isFinite(id) || id <= 0) {
       return Response.json(
@@ -111,7 +114,7 @@ export async function DELETE(request: Request) {
       );
     }
     const existing = await db
-      .select({ id: packagingRuns.id })
+      .select()
       .from(packagingRuns)
       .where(eq(packagingRuns.id, id))
       .limit(1);
@@ -121,8 +124,52 @@ export async function DELETE(request: Request) {
         { status: 404 },
       );
     }
+    const indexes = Array.isArray(body.indexes)
+      ? [
+          ...new Set(
+            body.indexes
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value) && value >= 0),
+          ),
+        ]
+      : [];
+    if (indexes.length) {
+      let payload: unknown[] = [];
+      try {
+        const parsed = JSON.parse(existing[0].payload);
+        payload = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        payload = [];
+      }
+      const remove = new Set(indexes);
+      const nextPayload = payload.filter((_, index) => !remove.has(index));
+      const deleted = payload.length - nextPayload.length;
+      if (!deleted) {
+        return Response.json(
+          { error: "None of the selected packaging labels were found." },
+          { status: 400 },
+        );
+      }
+      if (!nextPayload.length) {
+        await db.delete(packagingRuns).where(eq(packagingRuns.id, id));
+        return Response.json({ deleted, id, run: null });
+      }
+      const [run] = await db
+        .update(packagingRuns)
+        .set({
+          payload: JSON.stringify(nextPayload),
+          labelCount: nextPayload.length,
+        })
+        .where(eq(packagingRuns.id, id))
+        .returning();
+      return Response.json({
+        deleted,
+        id,
+        run: { ...run, payload: nextPayload },
+      });
+    }
     await db.delete(packagingRuns).where(eq(packagingRuns.id, id));
-    return Response.json({ deleted: 1, id });
+    return Response.json({ deleted: 1, id, run: null });
   } catch (error) {
     if (error instanceof AuthError) return authErrorResponse(error);
     return Response.json(

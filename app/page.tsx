@@ -836,6 +836,8 @@ const PackagingLabelRow = memo(function PackagingLabelRow({
   meta,
   index,
   isActive,
+  isChecked,
+  onToggle,
   onSelect,
 }: {
   marketplace: "Alpha" | "FBF";
@@ -843,19 +845,32 @@ const PackagingLabelRow = memo(function PackagingLabelRow({
   meta: string;
   index: number;
   isActive: boolean;
+  isChecked: boolean;
+  onToggle: (index: number) => void;
   onSelect: (index: number) => void;
 }) {
   return (
-    <button
-      className={isActive ? "active" : ""}
-      type="button"
-      onClick={() => onSelect(index)}
+    <div
+      className={`resultRow${isActive ? " active" : ""}${isChecked ? " checked" : ""}`}
     >
-      <span className={`tag ${marketplace.toLowerCase()}`}>{marketplace}</span>
-      <strong>{title}</strong>
-      {meta ? <small>{meta}</small> : null}
-      <small>Label {index + 1}</small>
-    </button>
+      <label
+        className="resultCheck"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => onToggle(index)}
+          aria-label={`Select packaging label ${index + 1}`}
+        />
+      </label>
+      <button type="button" onClick={() => onSelect(index)}>
+        <span className={`tag ${marketplace.toLowerCase()}`}>{marketplace}</span>
+        <strong>{title}</strong>
+        {meta ? <small>{meta}</small> : null}
+        <small>Label {index + 1}</small>
+      </button>
+    </div>
   );
 });
 
@@ -890,6 +905,7 @@ export default function Home() {
   >(null);
   const [selectionInput, setSelectionInput] = useState("");
   const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [checkedPackIndexes, setCheckedPackIndexes] = useState<number[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [authRole, setAuthRole] = useState<AuthRole | null>(null);
   const [loginRole, setLoginRole] = useState<AuthRole>("viewer");
@@ -942,9 +958,10 @@ export default function Home() {
       const uploaded = (j.runs ?? []).filter(
         (run: PackagingRun) => !isDemoPackagingRun(run),
       );
-      if (current && uploaded.some((run: PackagingRun) => run.id === current.id)) {
-        return current;
-      }
+      const fresh = current
+        ? uploaded.find((run: PackagingRun) => run.id === current.id)
+        : undefined;
+      if (fresh) return fresh;
       return (
         uploaded.find(
           (run: PackagingRun) => run.marketplace === marketplaceFilter,
@@ -1153,6 +1170,13 @@ export default function Home() {
   const selectPackagingLabel = useCallback((index: number) => {
     setRunLabelIndex(index);
   }, []);
+  const toggleCheckedPackLabel = useCallback((index: number) => {
+    setCheckedPackIndexes((current) =>
+      current.includes(index)
+        ? current.filter((item) => item !== index)
+        : [...current, index],
+    );
+  }, []);
   async function downloadPackaging(
     scope: "current" | "all" | "selected",
     requestedIndexes: number[] = [],
@@ -1301,6 +1325,7 @@ export default function Home() {
         uploadedRuns.find((run) => run.marketplace === marketplace) ?? null,
       );
       setRunLabelIndex(0);
+      setCheckedPackIndexes([]);
     }
   }
 
@@ -1320,6 +1345,7 @@ export default function Home() {
     }
     setSelectedRun(visibleRuns[0] ?? null);
     setRunLabelIndex(0);
+    setCheckedPackIndexes([]);
   }, [tab, selectedRun, visibleRuns]);
   async function downloadCheckedProducts() {
     if (!checkedProducts.length) {
@@ -1412,8 +1438,78 @@ export default function Home() {
       if (!r.ok) throw new Error(j.error || "Delete failed.");
       setSelectedRun(null);
       setRunLabelIndex(0);
+      setCheckedPackIndexes([]);
       await loadRuns();
       setNotice(`Packaging run deleted.`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Delete failed.");
+    }
+  }
+  function toggleAllPackLabels() {
+    if (!selectedRun?.payload.length) return;
+    setCheckedPackIndexes((current) =>
+      current.length === selectedRun.payload.length
+        ? []
+        : selectedRun.payload.map((_, index) => index),
+    );
+  }
+  async function deleteCheckedPackLabels() {
+    if (!canUpload) {
+      setNotice("Viewer access cannot delete data.");
+      return;
+    }
+    if (!selectedRun || !checkedPackIndexes.length) {
+      setNotice("Select one or more packaging labels first.");
+      return;
+    }
+    const deletingAll =
+      checkedPackIndexes.length === selectedRun.payload.length;
+    const confirmed = window.confirm(
+      deletingAll
+        ? `Delete all ${selectedRun.labelCount} packaging labels from "${selectedRun.sourceFile}"? This cannot be undone.`
+        : `Delete ${checkedPackIndexes.length} selected packaging label${checkedPackIndexes.length === 1 ? "" : "s"}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    try {
+      const r = await fetch("/api/packaging", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedRun.id,
+          indexes: deletingAll ? undefined : checkedPackIndexes,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Delete failed.");
+      const removed = new Set(checkedPackIndexes);
+      const remaining = selectedRun.payload
+        .map((_, index) => index)
+        .filter((index) => !removed.has(index));
+      const kept = remaining.includes(runLabelIndex)
+        ? remaining.indexOf(runLabelIndex)
+        : remaining.findIndex((index) => index > runLabelIndex);
+      setCheckedPackIndexes([]);
+      setRunLabelIndex(
+        deletingAll
+          ? 0
+          : kept >= 0
+            ? kept
+            : Math.max(0, remaining.length - 1),
+      );
+      if (!deletingAll && j.run) {
+        setSelectedRun(j.run);
+        setRuns((current) =>
+          current.map((run) => (run.id === j.run.id ? j.run : run)),
+        );
+      } else {
+        setSelectedRun(null);
+      }
+      await loadRuns();
+      setNotice(
+        deletingAll
+          ? "Packaging run deleted."
+          : `${j.deleted ?? checkedPackIndexes.length} packaging label${(j.deleted ?? checkedPackIndexes.length) === 1 ? "" : "s"} deleted.`,
+      );
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Delete failed.");
     }
@@ -2053,6 +2149,54 @@ export default function Home() {
                     : "0 found"}
                 </small>
               </div>
+              {selectedRun && selectedRun.payload.length > 0 ? (
+                <div className="resultSelectBar">
+                  <label className="resultSelectAll">
+                    <input
+                      type="checkbox"
+                      checked={
+                        checkedPackIndexes.length ===
+                        selectedRun.payload.length
+                      }
+                      ref={(node) => {
+                        if (node)
+                          node.indeterminate =
+                            checkedPackIndexes.length > 0 &&
+                            checkedPackIndexes.length <
+                              selectedRun.payload.length;
+                      }}
+                      onChange={toggleAllPackLabels}
+                    />
+                    <span>
+                      {checkedPackIndexes.length
+                        ? `${checkedPackIndexes.length} selected`
+                        : "Select"}
+                    </span>
+                  </label>
+                  <div className="resultSelectActions">
+                    {checkedPackIndexes.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          className="resultSelectClear"
+                          onClick={() => setCheckedPackIndexes([])}
+                        >
+                          Clear
+                        </button>
+                        {canUpload ? (
+                          <button
+                            type="button"
+                            className="resultSelectDelete"
+                            onClick={deleteCheckedPackLabels}
+                          >
+                            Delete ({checkedPackIndexes.length})
+                          </button>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : null}
               {visibleRuns.length > 1 ? (
                 <div className="search">
                   <select
@@ -2065,6 +2209,7 @@ export default function Home() {
                       if (!next) return;
                       setSelectedRun(next);
                       setRunLabelIndex(0);
+                      setCheckedPackIndexes([]);
                     }}
                   >
                     {visibleRuns.map((run) => (
@@ -2091,6 +2236,8 @@ export default function Home() {
                           meta={row.meta}
                           index={index}
                           isActive={index === runLabelIndex}
+                          isChecked={checkedPackIndexes.includes(index)}
+                          onToggle={toggleCheckedPackLabel}
                           onSelect={selectPackagingLabel}
                         />
                       );
