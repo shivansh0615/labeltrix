@@ -2736,6 +2736,15 @@ input:focus-visible {
   .preview .fbfPack .mergedBoxNo {
     font-size: 12px;
   }
+  .size-3x4 .preview .alphaPack strong,
+  .size-3x4 .preview .alphaPack span,
+  .size-3x4 .preview .fbfPack .consignment,
+  .size-3x4 .preview .fbfPack .slip,
+  .size-3x4 .preview .fbfPack .packHead > *,
+  .size-3x4 .preview .fbfPack .packItem > span,
+  .size-3x4 .preview .fbfPack .mergedBoxNo {
+    font-size: 16pt;
+  }
 }
 @media (max-width: 1100px) and (min-width: 901px) {
   .workspace {
@@ -3017,6 +3026,15 @@ input:focus-visible {
   height: 58px;
   padding: 3px 5px 16px !important;
   overflow: hidden;
+}
+.size-3x4 .alphaPack strong,
+.size-3x4 .alphaPack span,
+.size-3x4 .fbfPack .consignment,
+.size-3x4 .fbfPack .slip,
+.size-3x4 .fbfPack .packHead > *,
+.size-3x4 .fbfPack .packItem > span,
+.size-3x4 .fbfPack .mergedBoxNo {
+  font-size: 16pt;
 }
 .size-3x3 .alphaPack > div {
   min-height: 38px;

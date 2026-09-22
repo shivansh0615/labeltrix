@@ -337,6 +337,11 @@ function sizeScale(labelSize: LabelSize) {
   }
 }
 
+/** Packing-slip type. 3×4 uses a large 16pt face; other sizes keep the product scale. */
+function packTypeSize(labelSize: LabelSize, fallback: number) {
+  return labelSize === "3x4" ? 16 : fallback;
+}
+
 /** Floor for 3×3 field rows that are shorter than 9pt after barcode is reserved. */
 function thermalTextFloor(labelSize: LabelSize) {
   switch (labelSize) {
@@ -450,8 +455,8 @@ function barcodeDrawSpec(labelSize: LabelSize, format: "EAN13" | "CODE128") {
     case "3x4":
       return {
         widthRatio: 0.9,
-        barH: format === "EAN13" ? 32 : 28,
-        bottomPad: 3.5,
+        barH: format === "EAN13" ? 36 : 32,
+        bottomPad: 2,
         gap: 1.5,
         topPad: 1,
         wide,
@@ -562,6 +567,67 @@ function vLine(
   });
 }
 
+type BarcodeBars = { bars: Array<{ x: number; w: number }>; totalW: number };
+
+/** Solid black bar runs from JsBarcode SVG — no anti-aliased PNG stretch. */
+function encodeBarcodeBars(
+  text: string,
+  format: "EAN13" | "CODE128",
+): BarcodeBars {
+  if (typeof document === "undefined") {
+    throw new Error("Barcode rendering requires a browser environment.");
+  }
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  JsBarcode(svg, text, {
+    format,
+    displayValue: false,
+    // Quiet zone so the scanner can lock; 0 margin was clipping the pattern.
+    margin: 10,
+    width: 2,
+    height: 100,
+    background: "#ffffff",
+    lineColor: "#000000",
+    flat: true,
+  });
+  const totalW = parseFloat(svg.getAttribute("width") || "0");
+  const bars: Array<{ x: number; w: number }> = [];
+  for (const group of svg.querySelectorAll("g")) {
+    const transform = group.getAttribute("transform") || "";
+    const shift = /translate\(\s*([-\d.]+)/.exec(transform);
+    const ox = shift ? parseFloat(shift[1]) : 0;
+    for (const rect of group.querySelectorAll("rect")) {
+      const w = parseFloat(rect.getAttribute("width") || "0");
+      if (w <= 0) continue;
+      bars.push({
+        x: ox + parseFloat(rect.getAttribute("x") || "0"),
+        w,
+      });
+    }
+  }
+  return { bars, totalW };
+}
+
+function paintBarcodeBars(
+  page: PDFPage,
+  encoded: BarcodeBars,
+  x: number,
+  y: number,
+  drawW: number,
+  drawH: number,
+) {
+  if (!encoded.totalW || !encoded.bars.length) return;
+  const scale = drawW / encoded.totalW;
+  for (const bar of encoded.bars) {
+    page.drawRectangle({
+      x: x + bar.x * scale,
+      y,
+      width: bar.w * scale,
+      height: drawH,
+      color: BLACK,
+    });
+  }
+}
+
 async function drawBarcodeInArea(
   pdf: PDFDocument,
   page: PDFPage,
@@ -575,8 +641,10 @@ async function drawBarcodeInArea(
   height: number,
 ) {
   const s = sizeScale(labelSize);
-  const png = await makeBarcodePng(value, format);
-  const image = await pdf.embedPng(png);
+  const useVectorBars = labelSize === "3x4";
+  const encoded = useVectorBars ? encodeBarcodeBars(value, format) : null;
+  const png = useVectorBars ? null : await makeBarcodePng(value, format);
+  const image = png ? await pdf.embedPng(png) : null;
   const eanSize = s.ean;
   const yBottom = yTop - height;
   const spec = barcodeDrawSpec(labelSize, format);
@@ -608,22 +676,29 @@ async function drawBarcodeInArea(
     const maxW = width * 0.78;
     const maxH = Math.min(40, availH);
     drawW = maxW;
-    drawH = image.height * (maxW / image.width);
+    const srcW = image?.width || encoded?.totalW || maxW;
+    const srcH = image?.height || 100;
+    drawH = srcH * (maxW / srcW);
     if (drawH > maxH) {
       drawH = maxH;
-      drawW = image.width * (maxH / image.height);
+      drawW = srcW * (maxH / srcH);
     }
     textY = yBottom + innerPad;
     const by = contentBottom + (availH - drawH) / 2;
     imageY = Math.max(contentBottom, Math.min(by, contentTop - drawH));
   }
 
-  page.drawImage(image, {
-    x: x + (width - drawW) / 2,
-    y: imageY,
-    width: drawW,
-    height: drawH,
-  });
+  const barX = x + (width - drawW) / 2;
+  if (encoded?.bars.length) {
+    paintBarcodeBars(page, encoded, barX, imageY, drawW, drawH);
+  } else if (image) {
+    page.drawImage(image, {
+      x: barX,
+      y: imageY,
+      width: drawW,
+      height: drawH,
+    });
+  }
   const safe = pdfSafe(value);
   const textW = font.widthOfTextAtSize(safe, eanSize);
   drawSolidBlackText(
@@ -1970,6 +2045,7 @@ async function drawAlphaPack(
 ) {
   const { width, height } = PAGE_SIZES[labelSize];
   const s = sizeScale(labelSize);
+  const packPt = packTypeSize(labelSize, s.title);
   const margin = 8;
   const tableW = width - margin * 2;
   const tableTop = height - margin;
@@ -1987,7 +2063,7 @@ async function drawAlphaPack(
     kind: "pair",
     label: key,
     value,
-    fontSize: s.title,
+    fontSize: packPt,
   }));
   // Same 2-column box the HTML packing slip uses (outer frame + row/column rules).
   paintTerryGrid(page, margin, tableW, tableTop, rows, labelRatio, {
@@ -2003,7 +2079,7 @@ async function drawAlphaPack(
       page,
       toLabelCase(row.label || ""),
       font,
-      row.fontSize || s.title,
+      row.fontSize || packPt,
       margin,
       y,
       labelW,
@@ -2018,7 +2094,7 @@ async function drawAlphaPack(
       page,
       toValueCase(row.value || ""),
       font,
-      row.fontSize || s.title,
+      row.fontSize || packPt,
       margin + labelW,
       y,
       tableW - labelW,
@@ -2041,17 +2117,21 @@ async function drawFbfPack(
 ) {
   const { width, height } = PAGE_SIZES[labelSize];
   const s = sizeScale(labelSize);
+  const packPt = packTypeSize(labelSize, 0);
+  const bodyPt = packPt || s.body;
+  const titlePt = packPt || s.title;
+  const smallPt = packPt || s.small;
   const margin = 6;
   const tableW = width - margin * 2;
   let y = height - margin;
 
-  const headH = 20;
+  const headH = packPt ? 26 : 20;
   drawRect(page, margin, y - headH, tableW, headH);
   const consignment = label.consignment || "";
   page.drawText(consignment, {
     x: margin + s.pad,
-    y: y - headH + (headH - s.body) / 2,
-    size: s.body,
+    y: y - headH + (headH - bodyPt) / 2,
+    size: bodyPt,
     font,
     color: BLACK,
     maxWidth: tableW - s.pad * 2,
@@ -2060,11 +2140,11 @@ async function drawFbfPack(
 
   drawRect(page, margin, y - headH, tableW, headH);
   const slip = "PACKAGING SLIP";
-  const slipW = font.widthOfTextAtSize(slip, s.title);
+  const slipW = font.widthOfTextAtSize(slip, titlePt);
   page.drawText(slip, {
     x: margin + (tableW - slipW) / 2,
-    y: y - headH + (headH - s.title) / 2,
-    size: s.title,
+    y: y - headH + (headH - titlePt) / 2,
+    size: titlePt,
     font,
     color: BLACK,
   });
@@ -2072,7 +2152,7 @@ async function drawFbfPack(
 
   const colW = [tableW * 0.14, tableW * 0.36, tableW * 0.36, tableW * 0.14];
   const headers = ["Box No.", "SKU", "FSN", "QTY."];
-  const headerH = 14;
+  const headerH = packPt ? 22 : 14;
   const minSize = thermalTextFloor(labelSize);
   let x = margin;
   for (let i = 0; i < headers.length; i++) {
@@ -2081,7 +2161,7 @@ async function drawFbfPack(
       page,
       headers[i],
       font,
-      s.small,
+      smallPt,
       x,
       y,
       colW[i],
@@ -2101,18 +2181,18 @@ async function drawFbfPack(
 
   // merged box number column
   drawRect(page, margin, margin, colW[0], bodyH);
-  const boxLines = wrapText(label.boxNo || "", font, s.body, colW[0] - 4);
-  let by = margin + bodyH / 2 + ((boxLines.length - 1) * s.body * 1.1) / 2;
+  const boxLines = wrapText(label.boxNo || "", font, bodyPt, colW[0] - 4);
+  let by = margin + bodyH / 2 + ((boxLines.length - 1) * bodyPt * 1.1) / 2;
   for (const line of boxLines) {
-    const lw = font.widthOfTextAtSize(line, s.body);
+    const lw = font.widthOfTextAtSize(line, bodyPt);
     page.drawText(line, {
       x: margin + (colW[0] - lw) / 2,
       y: by,
-      size: s.body,
+      size: bodyPt,
       font,
       color: BLACK,
     });
-    by -= s.body * 1.1;
+    by -= bodyPt * 1.1;
   }
 
   let rowTop = y;
@@ -2126,7 +2206,7 @@ async function drawFbfPack(
         page,
         values[i] || "",
         font,
-        s.small,
+        smallPt,
         cx,
         rowTop,
         widths[i],
